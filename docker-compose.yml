@@ -1,0 +1,19 @@
+name: shopgo
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: shopgo
+      POSTGRES_PASSWORD: shopgo_local_only
+      POSTGRES_DB: shopgo
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - shopgo_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopgo -d shopgo"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+volumes:
+  shopgo_postgres:
