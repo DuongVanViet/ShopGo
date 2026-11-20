@@ -12,15 +12,15 @@ Các trường dưới đây là tối thiểu của mô hình đề xuất. PK/
 | stores — migration 003 | owner_user_id, contact_phone, contact_email, address_details, latitude, longitude, location_source, location_accuracy_meters, location_confirmed_at, location_version | Owner FK users; cặp tọa độ WGS84 trong phạm vi; seller store cần ghim đã xác nhận, cập nhật có version |
 | categories — migration 004 | name, slug, owner_store_id | Danh mục chung có owner null; danh mục seller FK store; slug unique riêng trong phạm vi global hoặc từng store |
 | product_images — migration 005 | product_id, storage_key, mime_type, byte_size, original_name, created_at, updated_at | Một ảnh chính/product; metadata trong PostgreSQL, binary lưu tại `UPLOAD_DIR/products`; chỉ JPEG/PNG/WebP tối đa 5 MB |
-| skus | product_id, code, barcode, unit, active | code unique; unit MVP là đơn vị đếm; không nhận qty lẻ |
-| store_skus | store_id, sku_id, price, active | unique store/SKU; price bigint ≥ 0 |
+| skus | product_id, code, barcode, unit, active | code unique; unit MVP là đơn vị đếm (`piece`, `pack`, `box`, `bottle`, `case`/thùng, `multipack`/lốc…); không nhận qty lẻ |
+| store_skus | store_id, sku_id, price, active, expires_on, version | unique store/SKU; price bigint ≥ 0; `expires_on` là hạn gần nhất của tồn hiện tại ở MVP, quá ngày sẽ tự chặn bán |
 | inventory_balances | store_id, sku_id, on_hand, reserved, version | bigint không âm; reserved ≤ on_hand; version tăng khi ghi |
 | inventory_reservations | order_id, store_id, sku_id, quantity, status, expires_at | quantity > 0; unique order/SKU; expires_at bắt buộc khi ACTIVE |
 | stock_movements | store_id, sku_id, delta_on_hand, delta_reserved, reason, reference_id, actor_id | Bất biến; reason RECEIPT/ADJUSTMENT/RESERVE/RELEASE/HANDOVER; unique reference hành động |
 | carts | user_id, store_id, status, version | Một giỏ ACTIVE mỗi user/store; trạng thái CONVERTED sau checkout |
 | cart_items | cart_id, sku_id, quantity | unique cart/SKU; quantity > 0, giới hạn tối đa cấu hình |
 | checkout_quotes | cart_id, cart_version, pricing_version, totals, slot_id, expires_at, consumed_order_id | Snapshot server; không nhận totals từ client |
-| orders | code, user_id, store_id, status, fulfillment_method, slot_id, totals, version, expires_at | code unique dễ tra cứu; PICKUP/DELIVERY; expiry cho online chưa trả |
+| orders | code, user_id, store_id, status, fulfillment_method, slot_id, totals, payment_method, payment_plan, deposit_percent, deposit_amount, amount_due_now, remaining_amount, version, expires_at | code unique; snapshot FULL_ONLINE/DEPOSIT_15; migration giữ LEGACY_PAY_AT_PICKUP cho đơn cũ; các phần tiền cộng đúng total |
 | order_items | order_id, sku_id, sku_code, name, unit_price, quantity, discount, line_total, picked_quantity | Snapshot; 0 ≤ picked_quantity ≤ quantity |
 | picking_assignments | order_id, picker_id, status, assigned_at, completed_at | Một assignment ACTIVE/đơn qua partial unique index |
 | fulfillment_slots | store_id, method, starts_at, ends_at, capacity, allocated_count | starts < ends; 0 ≤ allocated_count ≤ capacity |
@@ -43,7 +43,7 @@ Các trường dưới đây là tối thiểu của mô hình đề xuất. PK/
 - OrderStatus: PENDING_PAYMENT, CONFIRMED, PICKING, READY, COMPLETED, CANCELLED, EXPIRED.
 - ReservationStatus: ACTIVE, COMMITTED, CONSUMED, RELEASED. ACTIVE hết hạn được RELEASED; nguyên nhân EXPIRED ghi ở đơn và ledger.
 - PaymentAttemptStatus: INITIATED, PENDING, PAID, FAILED, EXPIRED. RefundStatus: REQUESTED, PROCESSING, SUCCEEDED, FAILED.
-- API payment summary: UNPAID, PENDING, PAID, REFUND_PENDING, PARTIALLY_REFUNDED, REFUNDED. Summary được tính từ attempts/collections/refunds, không sửa tay.
+- API payment summary: UNPAID, PENDING, PARTIALLY_PAID, PAID, REFUND_PENDING, PARTIALLY_REFUNDED, REFUNDED. Summary được tính từ attempts/collections/refunds, không sửa tay.
 - SlotBookingStatus: ACTIVE, RELEASED, FULFILLED. allocated_count = số ACTIVE + FULFILLED; hủy/hết hạn chỉ giảm khi booking còn ACTIVE.
 
 ## Chính sách voucher ban đầu

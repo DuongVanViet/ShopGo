@@ -27,7 +27,9 @@ Frontend dùng các route group `(storefront)`, `(picker)`, `(counter)`, `(admin
 
 ### Khám phá sản phẩm đa cửa hàng
 
-Khi chưa chọn store, catalog tải các offer từ mọi cửa hàng và coi `(storeId, skuId)` là định danh hiển thị; cùng một SKU có thể xuất hiện nhiều lần với giá/tồn khác nhau. Thẻ và modal phải ghi rõ tên, địa chỉ cửa hàng. Hành động **Vào cửa hàng này** chọn store tương ứng, đưa khách về vùng sản phẩm và thay feed tổng bằng catalog của store; nút thêm giỏ chỉ xuất hiện trong ngữ cảnh một store để không trộn giỏ giữa các cửa hàng.
+Thanh tìm kiếm có hai phạm vi độc lập: **Toàn ShopGo** truy vấn offer của mọi cửa hàng và **Trong cửa hàng** chỉ truy vấn store đang chọn. Header mặc định tìm toàn hệ thống nhưng cho đổi sang store hiện tại. Kết quả và trạng thái rỗng phải ghi rõ phạm vi đang dùng.
+
+Khi tìm toàn hệ thống, catalog coi `(storeId, skuId)` là định danh hiển thị; cùng một SKU có thể xuất hiện nhiều lần với giá/tồn khác nhau. Thẻ và modal phải ghi rõ tên, địa chỉ cửa hàng. Hành động **Vào cửa hàng và xem sản phẩm khác** chọn store tương ứng, xóa từ khóa/bộ lọc của kết quả tổng, đưa khách về vùng sản phẩm và tải toàn bộ catalog của store; nút thêm giỏ chỉ xuất hiện trong ngữ cảnh một store để không trộn giỏ giữa các cửa hàng.
 
 Chọn lại **Tất cả cửa hàng** xóa ngữ cảnh store và giỏ đang hiển thị. Bộ chọn này chỉ dành cho USER đã đăng nhập; khách chưa đăng nhập và tài khoản Seller/Staff/Admin không thấy khối nhận hàng của khách. Seller/Staff dùng store sở hữu hoặc membership, còn Admin dùng bộ chọn quản trị riêng.
 

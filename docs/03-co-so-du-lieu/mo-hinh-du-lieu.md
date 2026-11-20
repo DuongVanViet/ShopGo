@@ -40,7 +40,7 @@ erDiagram
 | Nhóm | Bảng | Vai trò |
 | --- | --- | --- |
 | Danh tính | users, auth_sessions, otp_challenges, store_memberships | Tài khoản, phiên, OTP băm/hạn dùng, vai trò theo store |
-| Hàng hóa | categories, products, skus, store_skus | Mô tả chung, biến thể, barcode, giá và khả năng bán từng store |
+| Hàng hóa | categories, products, skus, store_skus | Mô tả chung, biến thể, barcode, giá, trạng thái bán và hạn gần nhất của tồn hiện tại theo store |
 | Tồn kho | inventory_balances, inventory_reservations, stock_movements | Số dư, giữ tồn, ledger bất biến |
 | Giỏ/quote | carts, cart_items, checkout_quotes | Giỏ theo store, dòng hàng, snapshot tính giá có hạn |
 | Đơn | orders, order_items, order_events, picking_assignments | Snapshot đơn, dòng hàng, lịch sử và người soạn |
@@ -68,4 +68,4 @@ Hội thoại, log và sự kiện tăng nhanh cần retention/archival. Chỉ b
 
 ## Mở rộng có chủ đích
 
-delivery_jobs, delivery_events, delivery_proofs, cod_settlements cho giao hàng; loyalty_accounts/transactions cho điểm; reviews cho đánh giá; return_requests/return_items cho đổi trả từng phần; inventory_lots cho hạn sử dụng. Những bảng này chưa thuộc schema MVP bắt buộc. Hoàn tiền một phần và định giá cận date cần dữ liệu dòng hàng/lô đủ chi tiết trước triển khai.
+delivery_jobs, delivery_events, delivery_proofs, cod_settlements cho giao hàng; loyalty_accounts/transactions cho điểm; reviews cho đánh giá; return_requests/return_items cho đổi trả từng phần; inventory_lots để quản lý nhiều lô và nhiều hạn cho cùng SKU. MVP hiện lưu `store_skus.expires_on` như hạn gần nhất của tồn hiện tại; định giá cận date theo từng lô vẫn cần `inventory_lots` ở giai đoạn sau.

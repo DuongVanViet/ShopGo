@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { storePrice, storePriceFields } from '../catalog/store-price';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { Db, one, rows, Tx } from '../../database/db';
@@ -62,9 +63,12 @@ export class AiService {
     const skuIds = [...quantities.keys()].sort();
     const products = await rows(
       tx,
-      `SELECT ss.sku_id,ss.price,ss.version,s.name,b.on_hand-b.reserved AS available FROM store_skus ss
+      `SELECT ss.sku_id,${storePriceFields},ss.version,s.name,b.on_hand-b.reserved AS available FROM store_skus ss
       JOIN skus s ON s.id=ss.sku_id JOIN inventory_balances b ON b.sku_id=s.id AND b.store_id=ss.store_id
-      JOIN stores st ON st.id=ss.store_id WHERE ss.store_id=$1 AND ss.sku_id=ANY($2::uuid[]) AND ss.active AND s.active AND st.status='ACTIVE' ORDER BY ss.sku_id`,
+      JOIN stores st ON st.id=ss.store_id WHERE ss.store_id=$1 AND ss.sku_id=ANY($2::uuid[])
+      AND ss.active AND s.active AND st.status='ACTIVE'
+      AND (ss.expires_on IS NULL OR ss.expires_on >= (clock_timestamp() AT TIME ZONE st.timezone)::date)
+      ORDER BY ss.sku_id`,
       [cart.store_id, skuIds],
     );
     if (products.length !== skuIds.length)
@@ -226,9 +230,12 @@ export class AiService {
     if (!allowed) fail('RATE_LIMITED', 'Vui lòng chờ trước khi hỏi tiếp.', 429);
     const catalog = await rows(
       this.db.pool,
-      `SELECT s.id AS "skuId",s.name,ss.price AS "unitPrice",b.on_hand-b.reserved AS available FROM store_skus ss
-      JOIN skus s ON s.id=ss.sku_id JOIN inventory_balances b ON b.store_id=ss.store_id AND b.sku_id=s.id
-      WHERE ss.store_id=$1 AND ss.active AND s.active AND b.on_hand>b.reserved ORDER BY s.id LIMIT 100`,
+      `SELECT s.id AS "skuId",s.name,${storePrice} AS "unitPrice",b.on_hand-b.reserved AS available FROM store_skus ss
+      JOIN stores st ON st.id=ss.store_id JOIN skus s ON s.id=ss.sku_id
+      JOIN inventory_balances b ON b.store_id=ss.store_id AND b.sku_id=s.id
+      WHERE ss.store_id=$1 AND ss.active AND s.active AND b.on_hand>b.reserved
+      AND (ss.expires_on IS NULL OR ss.expires_on >= (clock_timestamp() AT TIME ZONE st.timezone)::date)
+      ORDER BY s.id LIMIT 100`,
       [conversation.store_id],
     );
     let reply: z.infer<typeof aiReply>;

@@ -14,6 +14,13 @@ export function useResource<T>(path: string | null, pollMs = 0) {
     loading: boolean;
   }>({ key: '', data: null, error: null, loading: false });
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
+  const updateData = useCallback(
+    (update: (data: T) => T) =>
+      setState((old) =>
+        old.key === identity && old.data !== null ? { ...old, data: update(old.data) } : old,
+      ),
+    [identity],
+  );
   useEffect(() => {
     if (!path) return;
     const controller = new AbortController();
@@ -49,5 +56,6 @@ export function useResource<T>(path: string | null, pollMs = 0) {
     error: current ? state.error : null,
     loading: !!path && (!current || state.loading),
     refresh,
+    updateData,
   };
 }

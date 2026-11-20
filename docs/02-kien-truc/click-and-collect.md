@@ -24,14 +24,14 @@ sequenceDiagram
   UI->>B: Create order + idempotency key
   B->>DB: Transaction: order + reserve + slot + outbox
   DB-->>B: Commit
-  alt Online
+  alt Thanh toán đủ online hoặc cọc 15%
     UI->>B: Tạo payment attempt
     B->>P: Khởi tạo phiên thanh toán
     P-->>UI: Trang thanh toán qua redirect/session
     P->>B: Webhook đã ký
     B->>DB: Xác minh và commit payment/confirmation
-  else Trả tại quầy
-    B->>DB: Đơn CONFIRMED, tiền UNPAID
+  else Đơn 0 đồng
+    B->>DB: Đơn CONFIRMED, không cần attempt
   end
   B-->>F: Đơn đủ điều kiện soạn qua outbox/worker
   F->>B: Claim và cập nhật dòng soạn
@@ -40,8 +40,8 @@ sequenceDiagram
   B-->>N: Gửi thông báo sẵn sàng
   K->>C: Trình QR
   C->>B: Lookup QR, xác minh đơn
-  opt Trả tại quầy
-    C->>B: Ghi nhận collection một lần
+  opt Đã cọc 15%
+    C->>B: Ghi nhận đúng phần còn lại một lần
   end
   C->>B: Xác nhận handover + version/key
   B->>DB: Consume tồn/token + COMPLETED + outbox
@@ -54,7 +54,7 @@ Tồn hiển thị là available tại thời điểm đọc. Thêm giỏ không
 
 ## Bước 2–3 — slot, đơn và thanh toán
 
-Quote tính giá, voucher, phí và slot nhưng không giữ chỗ. Checkout reserve tồn/slot/quota nguyên tử với order snapshot. Online vào PENDING_PAYMENT, có expiresAt; PAY_AT_PICKUP vào CONFIRMED và COMMITTED reservation. Online chỉ CONFIRMED sau webhook hoặc đối soát đã xác minh; browser redirect không đủ.
+Quote tính giá, voucher, phí, slot và hai phương án tiền do server quyết định nhưng không giữ chỗ. Checkout reserve tồn/slot/quota nguyên tử với order snapshot. `ONLINE` snapshot `FULL_ONLINE`; `PAY_AT_PICKUP` snapshot `DEPOSIT_15`, làm tròn lên đến đồng. Với tổng lớn hơn 0, cả hai vào PENDING_PAYMENT và chỉ CONFIRMED sau khi khoản `amountDueNow` được xác minh; browser redirect không đủ.
 
 Hết hạn, hủy hoặc lỗi tài nguyên phải trả giữ chỗ một lần. Thanh toán đến sau deadline tạo nghĩa vụ hoàn/đối soát và không khôi phục đơn. Tạo payment attempt lỗi không xóa đơn còn hạn; retry không tạo đơn mới.
 
@@ -70,7 +70,7 @@ Picker quét đối chiếu SKU/số lượng; hàng thiếu/hỏng tạo issue 
 
 ## Bước 6 — khách nhận hàng
 
-Counter lookup rồi xác nhận riêng; đúng store, token còn hạn/chưa dùng, đơn READY, tiền đủ và version hiện hành. Một transaction bàn giao ghi COMPLETED, consume token/reservation, trừ tồn và outbox. Retry không thu/trừ tồn/bàn giao lần hai.
+Counter lookup rồi xác nhận riêng; đúng store, token còn hạn/chưa dùng, đơn READY, tiền đủ và version hiện hành. Với đơn cọc, counter chỉ được ghi đúng số dư còn lại sau khi cọc đã trả và chỉ một lần. Một transaction bàn giao ghi COMPLETED, consume token/reservation, trừ tồn và outbox. Retry không thu/trừ tồn/bàn giao lần hai.
 
 MVP nhận tại quầy có nhân viên. Tủ tự động/điểm nhận tự phục vụ là mở rộng: cần danh tính thiết bị, cấp ô, giao thức mở khóa, cảm biến/bằng chứng nhận, lệnh có nonce/idempotency và xử lý cửa mở nhưng callback mất. Không dùng việc quét QR đơn thuần làm bằng chứng hàng đã rời tủ.
 

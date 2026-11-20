@@ -8,6 +8,7 @@ import { useResource } from '@/hooks/use-resource';
 import { api } from '@/lib/api';
 import { AddressFields } from '@/components/maps/address-fields';
 import { AccessGate, ErrorBox, Loading, PageTitle } from '@/components/ui';
+import type { Store } from '@/types';
 import type { LocationPin, SellerStore, StoreAddress } from '@/types/location';
 const LocationPicker = dynamic(() => import('@/components/maps/location-picker'), {
   ssr: false,
@@ -56,7 +57,7 @@ export function SellerLocationPage() {
     setBusy(true);
     setError(null);
     try {
-      await api('/seller/store/location', {
+      const updated = await api<Store>('/seller/store/location', {
         method: 'PATCH',
         token: shop.token,
         idempotent: true,
@@ -67,7 +68,7 @@ export function SellerLocationPage() {
         },
       });
       store.refresh();
-      await shop.refreshStores();
+      shop.setStore(updated);
       shop.notice('Đã lưu địa chỉ và ghim mới.');
     } catch (error) {
       setError(error);

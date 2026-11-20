@@ -58,11 +58,45 @@ const sellerProductSchema = z
           .regex(/^[A-Za-z0-9._-]+$/),
         barcode: z.string().trim().min(1).max(100).optional(),
         name: z.string().trim().min(1).max(200),
-        unit: z.enum(['piece', 'kg', 'g', 'l', 'ml', 'pack', 'box', 'bottle']),
+        unit: z.enum(['piece', 'kg', 'g', 'l', 'ml', 'pack', 'box', 'bottle', 'case', 'multipack']),
       })
       .strict(),
     price: money.refine((value) => value > 0, 'Giá bán phải lớn hơn 0.'),
     initialStock: z.number().int().min(0).max(1_000_000_000),
+    expiresOn: z.string().date().nullable().optional(),
+  })
+  .strict();
+const sellerProductUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200),
+    description: z.string().trim().max(5000),
+    categoryId: uuid,
+    sku: z
+      .object({
+        code: z
+          .string()
+          .trim()
+          .min(1)
+          .max(100)
+          .regex(/^[A-Za-z0-9._-]+$/),
+        barcode: z.string().trim().min(1).max(100).nullable(),
+        name: z.string().trim().min(1).max(200),
+        unit: z.enum(['piece', 'kg', 'g', 'l', 'ml', 'pack', 'box', 'bottle', 'case', 'multipack']),
+      })
+      .strict(),
+    price: money.refine((value) => value > 0, 'Giá bán phải lớn hơn 0.'),
+    active: z.boolean(),
+    expiresOn: z.string().date().nullable(),
+    discount: z
+      .object({
+        price: money.refine((value) => value > 0),
+        startsAt: z.string().datetime({ offset: true }),
+        endsAt: z.string().datetime({ offset: true }),
+      })
+      .strict()
+      .nullable()
+      .optional(),
+    expectedVersion: version,
   })
   .strict();
 const staffAccountSchema = z
@@ -232,6 +266,24 @@ export class ManagementController {
       actor,
       id(storeId),
       parse(sellerProductSchema, body),
+      key,
+      request.requestId,
+    );
+  }
+  @Patch('stores/:storeId/catalog/products/:skuId')
+  updateCatalogProduct(
+    @CurrentActor() actor: Actor,
+    @Param('storeId') storeId: string,
+    @Param('skuId') skuId: string,
+    @Body() body: unknown,
+    @Headers('idempotency-key') key: string | undefined,
+    @Req() request: ApiRequest,
+  ) {
+    return this.management.updateCatalogProduct(
+      actor,
+      id(storeId),
+      id(skuId),
+      parse(sellerProductUpdateSchema, body),
       key,
       request.requestId,
     );

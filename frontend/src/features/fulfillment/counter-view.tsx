@@ -160,6 +160,12 @@ export function CounterView() {
                     ))}
                   </tbody>
                 </table>
+                {order.voucherCode && (
+                  <div className="summary-line">
+                    <span>Mã {order.voucherCode}</span>
+                    <strong>−{money(order.discount)}</strong>
+                  </div>
+                )}
                 <div className="summary-line total">
                   <span>Tổng đơn</span>
                   <strong>{money(order.total)}</strong>

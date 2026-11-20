@@ -11,6 +11,7 @@ import { AccessGate, Badge, Empty, ErrorBox, Loading, Modal, PageTitle } from '@
 import { SellerLocationLink } from '@/features/auth/seller-location';
 import { SellerCatalog } from '@/features/management/seller-catalog';
 import { StaffManagement } from '@/features/management/staff-management';
+import { PromotionManagement } from '@/features/promotions/promotion-management';
 
 export function ManagerView() {
   const shop = useShop(),
@@ -152,6 +153,7 @@ export function ManagerView() {
             ['orders', 'Đơn hàng'],
             ['slots', 'Khung giờ nhận'],
             ['reports', 'Báo cáo thu tiền'],
+            ['promotions', 'Khuyến mãi'],
           ].map(([value, label]) => (
             <button
               key={value}
@@ -170,6 +172,7 @@ export function ManagerView() {
           <SellerCatalog base={base} onProductCreated={inventory.refresh} />
         )}
         {tab === 'staff' && base && <StaffManagement base={base} />}
+        {tab === 'promotions' && base && <PromotionManagement key={base} base={base} />}
         {tab === 'inventory' && (
           <section className="panel">
             <div className="panel-heading">

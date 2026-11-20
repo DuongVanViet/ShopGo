@@ -1,10 +1,32 @@
 import { test, expect } from '@playwright/test';
 
+test('authentication pages use a focused header without shopping controls', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/login');
+
+  await expect(page.getByRole('link', { name: 'ShopGo trang chủ', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Trang chủ', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Tạo tài khoản', exact: true })).toBeVisible();
+  await expect(page.getByRole('search')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /Giỏ hàng/ })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Yêu thích', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Điều hướng chính' })).toHaveCount(0);
+  await expect(page.locator('footer')).toHaveCount(0);
+
+  await page.getByRole('link', { name: 'Tạo tài khoản', exact: true }).click();
+  await expect(page).toHaveURL(/\/register$/);
+  await expect(
+    page.getByRole('banner').getByRole('link', { name: 'Đăng nhập', exact: true }),
+  ).toBeVisible();
+});
+
 test('login and registration pages work on mobile without exposing map by default', async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 320, height: 740 });
   await page.goto('/login');
+  await expect(page.getByRole('link', { name: 'Trang chủ', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
   await expect(page.getByRole('heading', { name: 'Đăng nhập', exact: true })).toBeVisible();
   await expect(page.getByLabel('Số điện thoại hoặc email', { exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Đăng ký ngay', exact: true }).click();

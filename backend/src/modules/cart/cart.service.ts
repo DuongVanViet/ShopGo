@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { storePriceFields } from '../catalog/store-price';
 import { Db, one, rows, Tx } from '../../database/db';
 import { Actor } from '../../common/context';
 import { expected } from '../../common/access';
@@ -32,8 +33,13 @@ export class CartService {
       ...cart,
       items: await rows(
         tx,
-        `SELECT ci.*,s.name,s.code,ss.price,b.on_hand-b.reserved AS available FROM cart_items ci JOIN skus s ON s.id=ci.sku_id
-      JOIN store_skus ss ON ss.sku_id=ci.sku_id AND ss.store_id=$2 JOIN inventory_balances b ON b.sku_id=ci.sku_id AND b.store_id=$2 WHERE ci.cart_id=$1 ORDER BY ci.sku_id`,
+        `SELECT ci.*,s.name,s.code,s.unit,${storePriceFields},b.on_hand-b.reserved AS available,
+        CASE WHEN pi.storage_key IS NULL THEN NULL ELSE '/api/v1/media/products/'||pi.storage_key END AS image_url
+        FROM cart_items ci JOIN skus s ON s.id=ci.sku_id
+        JOIN store_skus ss ON ss.sku_id=ci.sku_id AND ss.store_id=$2
+        JOIN inventory_balances b ON b.sku_id=ci.sku_id AND b.store_id=$2
+        LEFT JOIN product_images pi ON pi.product_id=s.product_id
+        WHERE ci.cart_id=$1 ORDER BY ci.sku_id`,
         [cart.id, cart.store_id],
       ),
     };
@@ -53,7 +59,9 @@ export class CartService {
         must(
           await one(
             tx,
-            'SELECT ss.sku_id FROM store_skus ss JOIN skus s ON s.id=ss.sku_id WHERE ss.store_id=$1 AND ss.sku_id=$2 AND ss.active AND s.active',
+            `SELECT ss.sku_id FROM store_skus ss JOIN skus s ON s.id=ss.sku_id
+             WHERE ss.store_id=$1 AND ss.sku_id=$2 AND ss.active AND s.active
+             AND (ss.expires_on IS NULL OR ss.expires_on >= (clock_timestamp() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date)`,
             [input.storeId, skuId],
           ),
         );
@@ -128,7 +136,9 @@ export class CartService {
       const target = await this.active(tx, actor, input.targetStoreId);
       const sourceItems = await rows(
         tx,
-        `SELECT ci.sku_id,ci.quantity,ss.price,ss.active,s.active AS sku_active,b.on_hand-b.reserved AS available
+        `SELECT ci.sku_id,ci.quantity,${storePriceFields},ss.active,s.active AS sku_active,
+        (ss.expires_on IS NULL OR ss.expires_on >= (clock_timestamp() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date) AS not_expired,
+        b.on_hand-b.reserved AS available
         FROM cart_items ci JOIN skus s ON s.id=ci.sku_id LEFT JOIN store_skus ss ON ss.sku_id=ci.sku_id AND ss.store_id=$2
         LEFT JOIN inventory_balances b ON b.sku_id=ci.sku_id AND b.store_id=$2 WHERE ci.cart_id=$1`,
         [source.id, target.store_id],
@@ -144,7 +154,12 @@ export class CartService {
       expected(target, input.expectedTargetVersion);
       if (
         sourceItems.some(
-          (i) => i.price === null || !i.active || !i.sku_active || i.available < i.quantity,
+          (i) =>
+            i.price === null ||
+            !i.active ||
+            !i.sku_active ||
+            !i.not_expired ||
+            i.available < i.quantity,
         )
       )
         fail(

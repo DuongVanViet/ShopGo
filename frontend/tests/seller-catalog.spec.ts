@@ -27,6 +27,8 @@ test('seller creates a category and a detailed product without an admin account'
   );
   let categoryRequest: { body: any; authorization?: string; idempotency?: string } | null = null;
   let productRequest: { body: any; authorization?: string; idempotency?: string } | null = null;
+  let editRequest: { body: any; authorization?: string; idempotency?: string } | null = null;
+  let writeOffRequest: { body: any; authorization?: string; idempotency?: string } | null = null;
   let imageRequest: { contentType?: string; body: string } | null = null;
 
   await page.route('**/api/v1/**', async (route) => {
@@ -87,11 +89,62 @@ test('seller creates a category and a detailed product without an admin account'
         reserved: 0,
         available: body.initialStock,
         active: true,
+        expiresOn: body.expiresOn,
         version: 1,
         imageUrl: null,
       };
       products.push(product);
       return fulfill(product, 201);
+    }
+    if (
+      path === `/stores/${store.id}/catalog/products/40000000-0000-4000-a000-000000000001` &&
+      method === 'PATCH'
+    ) {
+      const body = request.postDataJSON();
+      editRequest = {
+        body,
+        authorization: request.headers().authorization,
+        idempotency: request.headers()['idempotency-key'],
+      };
+      Object.assign(products[0], {
+        name: body.name,
+        description: body.description,
+        categoryId: body.categoryId,
+        categoryName: category.name,
+        code: body.sku.code,
+        barcode: body.sku.barcode,
+        unit: body.sku.unit,
+        price: body.price,
+        active: body.active,
+        expiresOn: body.expiresOn,
+        version: 2,
+      });
+      return fulfill(products[0]);
+    }
+    if (
+      path === `/stores/${store.id}/inventory/40000000-0000-4000-a000-000000000001/write-offs` &&
+      method === 'POST'
+    ) {
+      const body = request.postDataJSON();
+      writeOffRequest = {
+        body,
+        authorization: request.headers().authorization,
+        idempotency: request.headers()['idempotency-key'],
+      };
+      const product = products[0] as any;
+      product.onHand -= body.quantity;
+      product.available -= body.quantity;
+      return fulfill(
+        {
+          storeId: store.id,
+          skuId: product.skuId,
+          onHand: product.onHand,
+          reserved: product.reserved,
+          available: product.available,
+          version: 2,
+        },
+        201,
+      );
     }
     if (
       path === `/stores/${store.id}/catalog/products/50000000-0000-4000-a000-000000000001/image` &&
@@ -138,11 +191,29 @@ test('seller creates a category and a detailed product without an admin account'
   await page.getByRole('button', { name: 'Đăng nhập tài khoản', exact: true }).click();
   await expect(page).toHaveURL(/\/quan-ly$/);
   await expect(
-    page.getByRole('heading', { name: 'Đưa sản phẩm đầu tiên lên ShopGo.' }),
+    page.getByRole('heading', { name: 'Danh mục & sản phẩm', exact: true }),
   ).toBeVisible();
+  await expect(page.getByLabel('Tên danh mục', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Tên sản phẩm', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Quét QR', exact: true }).click();
+  const qrDialog = page.getByRole('dialog', { name: 'Quét QR để tạo sản phẩm' });
+  await expect(qrDialog.getByRole('button', { name: 'Quét bằng camera' })).toBeDisabled();
+  await qrDialog
+    .getByLabel('Chọn ảnh mã QR')
+    .setInputFiles({ name: 'ma-qr.png', mimeType: 'image/png', buffer: productImage });
+  await expect(qrDialog.getByRole('img', { name: 'Xem trước ảnh mã QR' })).toBeVisible();
+  expect(productRequest).toBeNull();
+  await page.screenshot({ path: 'test-results/seller-qr-mobile.png' });
+  await qrDialog.getByRole('button', { name: 'Nhập thông tin thủ công' }).click();
+  await expect(page.getByRole('dialog', { name: 'Tạo sản phẩm', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).not.toBeVisible();
 
-  await page.getByLabel('Tên danh mục', { exact: true }).fill(category.name);
   await page.getByRole('button', { name: 'Tạo danh mục', exact: true }).click();
+  await page.getByLabel('Tên danh mục', { exact: true }).fill(category.name);
+  await page.getByRole('button', { name: 'Lưu danh mục', exact: true }).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await page.getByRole('button', { name: 'Tạo sản phẩm', exact: true }).click();
   await expect(page.getByRole('option', { name: category.name })).toHaveCount(1);
   await expect(page.getByLabel('Danh mục sản phẩm', { exact: true })).toHaveValue(category.id);
   expect(categoryRequest).toMatchObject({
@@ -158,6 +229,8 @@ test('seller creates a category and a detailed product without an admin account'
   await page.getByLabel('Tồn ban đầu', { exact: true }).fill('12');
   const unit = page.getByRole('combobox', { name: 'Đơn vị bán' });
   await expect(unit).toBeVisible();
+  await expect(unit.getByRole('option', { name: 'Thùng', exact: true })).toHaveCount(1);
+  await expect(unit.getByRole('option', { name: 'Lốc', exact: true })).toHaveCount(1);
   await unit.selectOption({ label: 'Gói' });
   await page
     .getByLabel('Mô tả chi tiết', { exact: true })
@@ -198,6 +271,68 @@ test('seller creates a category and a detailed product without an admin account'
   expect(imageRequest!.contentType).toContain('multipart/form-data; boundary=');
   expect(imageRequest!.body).toContain('name="image"');
   expect(imageRequest!.body).toContain('filename="tao-xanh.png"');
+
+  await page.getByRole('button', { name: 'Chỉnh sửa thuộc tính', exact: true }).click();
+  const editDialog = page.getByRole('dialog', { name: 'Chỉnh sửa sản phẩm' });
+  await expect(editDialog).toBeVisible();
+  await editDialog.getByLabel('Tên sản phẩm', { exact: true }).fill('Táo xanh premium 500g');
+  await editDialog.getByLabel('Mã SKU', { exact: true }).fill('TAO-XANH-500-MOI');
+  await editDialog.getByLabel('Mã vạch', { exact: true }).fill('8930000000009');
+  await editDialog.getByLabel('Giá bán mới (VND)', { exact: true }).fill('49000');
+  await editDialog.locator('select[name="unit"]').selectOption('case');
+  await editDialog.getByLabel('Hạn sử dụng gần nhất', { exact: true }).fill('2099-12-31');
+  await editDialog
+    .locator('textarea[name="description"]')
+    .fill('Thông tin sản phẩm đã được manager cập nhật.');
+  await editDialog.locator('input[name="active"]').uncheck();
+  await editDialog.getByRole('button', { name: 'Lưu thay đổi', exact: true }).click();
+
+  await expect(page.getByRole('heading', { name: 'Táo xanh premium 500g' })).toBeVisible();
+  await expect(page.getByText('49.000 ₫', { exact: true })).toBeVisible();
+  await expect(page.getByText('Đã tạm ngừng', { exact: true })).toBeVisible();
+  await expect(page.getByText('Hạn 31/12/2099', { exact: true })).toBeVisible();
+  expect(editRequest).toMatchObject({
+    authorization: 'Bearer seller-test-token',
+    body: {
+      name: 'Táo xanh premium 500g',
+      description: 'Thông tin sản phẩm đã được manager cập nhật.',
+      categoryId: category.id,
+      sku: {
+        code: 'TAO-XANH-500-MOI',
+        barcode: '8930000000009',
+        name: 'Táo xanh premium 500g',
+        unit: 'case',
+      },
+      price: 49000,
+      active: false,
+      expiresOn: '2099-12-31',
+      expectedVersion: 1,
+    },
+  });
+  expect(editRequest!.idempotency).toBeTruthy();
+
+  await page.getByRole('button', { name: 'Loại hàng hỏng / hết hạn', exact: true }).click();
+  const writeOffDialog = page.getByRole('dialog', { name: 'Loại hàng khỏi tồn kho' });
+  await expect(writeOffDialog).toBeVisible();
+  await expect(writeOffDialog.getByText('Có thể loại: 12', { exact: false })).toBeVisible();
+  await writeOffDialog.locator('select[name="reason"]').selectOption('DAMAGED');
+  await writeOffDialog.locator('input[name="quantity"]').fill('3');
+  await writeOffDialog
+    .locator('textarea[name="note"]')
+    .fill('Ba thùng bị móp và rách khi vận chuyển.');
+  await writeOffDialog.getByRole('button', { name: 'Xác nhận loại khỏi kho', exact: true }).click();
+  await expect(writeOffDialog).toBeHidden();
+  await expect(page.getByText('Tồn: 9', { exact: true })).toBeVisible();
+  await expect(page.getByText('Có thể bán: 9', { exact: true })).toBeVisible();
+  expect(writeOffRequest).toMatchObject({
+    authorization: 'Bearer seller-test-token',
+    body: {
+      quantity: 3,
+      reason: 'DAMAGED',
+      note: 'Ba thùng bị móp và rách khi vận chuyển.',
+    },
+  });
+  expect(writeOffRequest!.idempotency).toBeTruthy();
   const mobileLayout = await page.evaluate(() => ({
     viewportWidth: innerWidth,
     documentWidth: document.documentElement.scrollWidth,

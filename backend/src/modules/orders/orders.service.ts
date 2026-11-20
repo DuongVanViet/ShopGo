@@ -88,6 +88,10 @@ export class OrdersService {
             ],
           ),
         );
+        if (voucher) {
+          await tx.query('UPDATE orders SET voucher_code=$2 WHERE id=$1', [order.id, voucher.code]);
+          order.voucher_code = voucher.code;
+        }
         for (const item of pricing.items) {
           const balance = await one(
             tx,
@@ -97,7 +101,7 @@ export class OrdersService {
           );
           if (!balance) fail('OUT_OF_STOCK', 'Sản phẩm vừa hết hàng.', 409, { skuId: item.skuId });
           await tx.query(
-            'INSERT INTO order_items(order_id,sku_id,sku_code,name,unit_price,quantity,line_total) VALUES($1,$2,$3,$4,$5,$6,$7)',
+            'INSERT INTO order_items(order_id,sku_id,sku_code,name,unit_price,quantity,line_total,original_unit_price) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
             [
               order.id,
               item.skuId,
@@ -106,6 +110,7 @@ export class OrdersService {
               item.unitPrice,
               item.quantity,
               item.lineTotal,
+              item.originalUnitPrice,
             ],
           );
           await tx.query(
@@ -137,7 +142,7 @@ export class OrdersService {
         if (pricing.voucherId) {
           const allocated = await one(
             tx,
-            'UPDATE vouchers SET allocated_count=allocated_count+1 WHERE id=$1 AND allocated_count<quota AND valid_until>clock_timestamp() RETURNING id',
+            'UPDATE vouchers SET allocated_count=allocated_count+1 WHERE id=$1 AND active AND allocated_count<quota AND valid_from<=clock_timestamp() AND valid_until>clock_timestamp() RETURNING id',
             [pricing.voucherId],
           );
           if (!allocated) fail('VOUCHER_INELIGIBLE', 'Voucher đã hết lượt.', 422);

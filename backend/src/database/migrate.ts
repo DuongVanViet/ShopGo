@@ -1,8 +1,18 @@
 import 'dotenv/config';
 import { createHash } from 'node:crypto';
-import { readdir, readFile } from 'node:fs/promises';
+import { readdirSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Pool } from 'pg';
+
+const directory = join(__dirname, 'migrations');
+export function migrationFiles() {
+  const versions = readdirSync(directory)
+    .filter((name) => name.endsWith('.sql'))
+    .sort();
+  if (!versions.length) throw new Error('No SQL migrations found');
+  return versions;
+}
 
 export async function migrate(connectionString: string): Promise<void> {
   const pool = new Pool({ connectionString });
@@ -12,10 +22,8 @@ export async function migrate(connectionString: string): Promise<void> {
     await db.query(
       'CREATE TABLE IF NOT EXISTS schema_migrations(version text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())',
     );
-    for (const name of (await readdir(join(__dirname, 'migrations')))
-      .filter((f) => f.endsWith('.sql'))
-      .sort()) {
-      const sql = await readFile(join(__dirname, 'migrations', name), 'utf8');
+    for (const name of migrationFiles()) {
+      const sql = await readFile(join(directory, name), 'utf8');
       const checksum = createHash('sha256').update(sql).digest('hex');
       const existing = await db.query('SELECT checksum FROM schema_migrations WHERE version=$1', [
         name,

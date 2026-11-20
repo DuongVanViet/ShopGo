@@ -100,7 +100,9 @@ export function AdminView() {
             <select
               aria-label="Chọn cửa hàng quản trị"
               value={shop.store?.id ?? ''}
-              onChange={(event) => shop.setStore(event.target.value)}
+              onChange={(event) =>
+                shop.setStore(shop.stores.find((store) => store.id === event.target.value) ?? null)
+              }
             >
               <option value="" disabled>
                 Chọn cửa hàng
@@ -113,6 +115,10 @@ export function AdminView() {
             </select>
           </label>
         </div>
+        <ErrorBox
+          error={shop.storesError ? new Error(shop.storesError) : null}
+          retry={() => void shop.refreshStores()}
+        />
         <div className="filters">
           {[
             ['product', 'Sản phẩm'],

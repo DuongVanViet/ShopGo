@@ -1,0 +1,1307 @@
+.shopgo-retail-home {
+  --retail-green: #069447;
+  --retail-green-dark: #056433;
+  --retail-green-soft: #eaf8ee;
+  --retail-ink: #15211a;
+  --retail-muted: #65716a;
+  --retail-line: #dfe6e1;
+  --retail-card: #ffffff;
+  padding-top: 22px;
+}
+
+.shopgo-retail-hero {
+  position: relative;
+  min-height: 390px;
+  border: 1px solid #dce9df;
+  border-radius: 24px;
+  overflow: hidden;
+  background: linear-gradient(105deg, #f8fff9 0%, #e9f9ee 58%, #d8f3e1 100%);
+  box-shadow: 0 16px 46px rgba(22, 83, 47, 0.1);
+}
+
+.shopgo-retail-hero-copy {
+  position: relative;
+  z-index: 3;
+  width: 51%;
+  padding: 56px 18px 52px 52px;
+}
+
+.shopgo-retail-kicker {
+  margin: 0 0 13px;
+  color: var(--retail-green);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.shopgo-retail-hero-copy h1 {
+  max-width: 570px;
+  margin: 0;
+  color: #073d24;
+  font-size: clamp(42px, 5vw, 68px);
+  font-weight: 850;
+  letter-spacing: -0.055em;
+  line-height: 0.98;
+}
+
+.shopgo-retail-hero-copy h1 span {
+  display: block;
+  margin-top: 10px;
+  color: var(--retail-green);
+  font-size: 0.72em;
+  letter-spacing: -0.035em;
+}
+
+.shopgo-retail-hero-copy > p:not(.shopgo-retail-kicker) {
+  max-width: 520px;
+  margin: 20px 0 0;
+  color: #35463c;
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.shopgo-retail-hero-points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 22px;
+  margin-top: 22px;
+  color: #173b27;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.shopgo-retail-hero-points span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.shopgo-retail-hero-points svg {
+  color: var(--retail-green);
+}
+
+.shopgo-retail-hero-action {
+  min-height: 48px;
+  margin-top: 26px;
+  padding: 0 25px;
+  border-radius: 999px;
+  font-size: 15px;
+  box-shadow: 0 10px 26px rgba(0, 142, 64, 0.25);
+}
+
+.shopgo-retail-hero-media {
+  position: absolute;
+  inset: 0 0 0 37%;
+  z-index: 1;
+  background-image:
+    linear-gradient(90deg, #effbf4 0%, rgba(239, 251, 244, 0.65) 13%, transparent 39%),
+    url('/shopgo-retail-hero-v1.webp');
+  background-position: center right;
+  background-size: cover;
+}
+
+.shopgo-retail-hero-media .grocery-art {
+  display: none;
+}
+
+.shopgo-retail-floating-card {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 10px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 13px;
+  color: #163522;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 12px 32px rgba(20, 61, 36, 0.17);
+  backdrop-filter: blur(8px);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.shopgo-retail-floating-card svg {
+  color: var(--retail-green);
+  flex: 0 0 auto;
+}
+
+.shopgo-retail-floating-card.card-order {
+  top: 37px;
+  left: 37%;
+}
+
+.shopgo-retail-floating-card.card-time {
+  top: 130px;
+  left: 42%;
+}
+
+.shopgo-retail-floating-card.card-pickup {
+  right: 25px;
+  bottom: 40px;
+}
+
+.shopgo-retail-shop-tools {
+  position: relative;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.75fr);
+  gap: 18px;
+  margin: -1px 26px 0;
+  padding: 18px 0;
+}
+
+.shopgo-retail-shop-tools.without-picker {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.shopgo-retail-search-box {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #d5ded8;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 7px 20px rgba(25, 49, 34, 0.08);
+}
+
+.shopgo-retail-search-scope {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  padding: 6px;
+  border-bottom: 1px solid #e4ebe6;
+  background: #f7faf8;
+}
+
+.shopgo-retail-search-scope button {
+  min-width: 0;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: #526057;
+  background: transparent;
+  text-align: left;
+}
+
+.shopgo-retail-search-scope button > span,
+.shopgo-retail-search-scope strong,
+.shopgo-retail-search-scope small {
+  min-width: 0;
+  display: block;
+}
+
+.shopgo-retail-search-scope strong {
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shopgo-retail-search-scope small {
+  margin-top: 2px;
+  overflow: hidden;
+  color: #7b8880;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shopgo-retail-search-scope button.active {
+  border-color: #91cca3;
+  color: #08793a;
+  background: #eaf8ee;
+  box-shadow: 0 2px 8px rgba(20, 104, 52, 0.08);
+}
+
+.shopgo-retail-search-scope button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.shopgo-retail-main-search,
+.shopgo-retail-pickup-select {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 58px;
+  border: 1px solid #d5ded8;
+  border-radius: 14px;
+  color: var(--retail-green);
+  background: #fff;
+  box-shadow: 0 7px 20px rgba(25, 49, 34, 0.08);
+}
+
+.shopgo-retail-main-search {
+  flex-direction: row;
+  padding-left: 18px;
+  overflow: hidden;
+}
+
+.shopgo-retail-search-box .shopgo-retail-main-search {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.shopgo-retail-main-search input {
+  min-width: 0;
+  flex: 1;
+  height: 56px;
+  padding: 0 17px;
+  border: 0;
+  outline: 0;
+  color: var(--retail-ink);
+  background: transparent;
+  font-size: 15px;
+}
+
+.shopgo-retail-main-search > button {
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  min-width: 132px;
+  border: 0;
+  color: #fff;
+  background: linear-gradient(135deg, #08a24f, #047c3b);
+  font-weight: 800;
+}
+
+.shopgo-retail-main-search > button:hover {
+  background: linear-gradient(135deg, #079647, #036e34);
+}
+
+.shopgo-retail-pickup-select {
+  gap: 12px;
+  align-self: center;
+  padding: 7px 17px;
+}
+
+.shopgo-retail-pickup-select .store-select-copy > span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.shopgo-retail-pickup-select label {
+  min-width: 0;
+  flex: 1;
+}
+
+.shopgo-retail-pickup-select small {
+  display: block;
+  color: #637069;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.shopgo-retail-pickup-select select {
+  width: 100%;
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  color: var(--retail-ink);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.shopgo-retail-category-strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 118px;
+  gap: 10px;
+  margin: 12px 0 24px;
+  overflow-x: auto;
+  padding: 1px 1px 7px;
+  scrollbar-width: thin;
+}
+
+.shopgo-retail-category-strip button {
+  display: flex;
+  min-width: 0;
+  min-height: 94px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 12px 9px;
+  border: 1px solid #e3e9e5;
+  border-radius: 16px;
+  color: #27352c;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  transition: 160ms ease;
+}
+
+.shopgo-retail-category-strip button:hover,
+.shopgo-retail-category-strip button.active {
+  border-color: #92d2aa;
+  color: #06753a;
+  background: #ecfaef;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(23, 109, 57, 0.09);
+}
+
+.shopgo-retail-promo-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.shopgo-retail-promo-grid > * {
+  position: relative;
+  display: flex;
+  min-height: 158px;
+  align-items: center;
+  justify-content: space-between;
+  overflow: hidden;
+  padding: 25px 26px;
+  border-radius: 19px;
+  color: #173321;
+  text-align: left;
+  cursor: pointer;
+}
+.store-card-action {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+}
+.store-card-action:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: -4px;
+}
+.shopgo-retail-promo-grid > *:hover {
+  box-shadow: 0 4px 16px rgb(21 60 34 / 14%);
+}
+.shopgo-retail-benefits .benefit {
+  position: relative;
+  border-radius: 10px;
+  text-align: left;
+}
+.shopgo-retail-benefits .benefit:hover {
+  background: var(--cream);
+}
+#uu-dai,
+#san-pham {
+  scroll-margin-top: 170px;
+}
+
+.shopgo-retail-promo-grid .promo-sale {
+  background: linear-gradient(135deg, #ffe8e3, #ffcbc4);
+}
+
+.shopgo-retail-promo-grid .promo-pickup {
+  background: linear-gradient(135deg, #e5f8df, #beeebc);
+}
+
+.shopgo-retail-promo-grid .promo-guide {
+  background: linear-gradient(135deg, #fff0ce, #ffe0a8);
+}
+
+.shopgo-retail-promo-grid > * > div {
+  position: relative;
+  z-index: 2;
+  max-width: 74%;
+}
+
+.shopgo-retail-promo-grid > * > svg {
+  flex: 0 0 auto;
+  opacity: 0.72;
+}
+
+.shopgo-retail-promo-grid small {
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.11em;
+}
+
+.shopgo-retail-promo-grid h2 {
+  margin: 5px 0 6px;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+
+.shopgo-retail-promo-grid p,
+.shopgo-retail-promo-grid .promo-guide-action {
+  margin: 0;
+  color: #4a5b50;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.shopgo-retail-promo-grid .promo-guide-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #075e30;
+  font-weight: 800;
+}
+
+.shopgo-retail-status-chip {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: #7b281e;
+  background: rgba(255, 255, 255, 0.75);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.shopgo-retail-benefits {
+  margin: 0 0 24px;
+  padding: 17px 22px;
+  border: 1px solid #e3e9e5;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.shopgo-retail-store-discovery {
+  margin: 0 0 24px;
+  padding: 25px;
+  border: 1px solid #dfe7e1;
+  border-radius: 20px;
+  background: #f9fcfa;
+}
+
+.shopgo-retail-store-discovery .store-discovery-heading {
+  margin-bottom: 18px;
+}
+
+.shopgo-retail-store-discovery .store-scope-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.shopgo-retail-store-discovery .store-scope-card {
+  min-width: 0;
+  min-height: 92px;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.shopgo-retail-store-discovery .store-scope-card.all-stores {
+  border-color: #08753b;
+  color: #fff;
+  background: linear-gradient(135deg, #0a8843, #066a35);
+}
+
+.shopgo-retail-store-discovery .store-scope-card.all-stores small {
+  color: #d9f3e3;
+}
+
+.shopgo-retail-catalog {
+  scroll-margin-top: 154px;
+  padding-top: 15px;
+}
+
+.shopgo-retail-catalog-heading {
+  align-items: end;
+  padding: 0 2px;
+}
+
+.shopgo-retail-catalog-heading p {
+  color: var(--retail-muted);
+  font-size: 12px;
+}
+
+.shopgo-retail-catalog-layout {
+  grid-template-columns: 245px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.shopgo-retail-filter-panel {
+  position: sticky;
+  top: 136px;
+  overflow: hidden;
+  border: 1px solid #dfe6e1;
+  border-radius: 17px;
+  background: #fff;
+  box-shadow: 0 8px 28px rgba(24, 62, 39, 0.06);
+}
+
+.shopgo-retail-filter-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 18px;
+  border-bottom: 1px solid #e5ebe7;
+  color: #163623;
+  font-size: 14px;
+}
+
+.shopgo-retail-filter-panel .category-menu {
+  padding: 16px 12px 14px;
+  border: 0;
+  border-radius: 0;
+}
+
+.shopgo-retail-filter-panel h3 {
+  margin: 0 6px 10px;
+  color: #202c24;
+  font-size: 12px;
+}
+
+.shopgo-retail-filter-panel .category-menu button {
+  min-height: 35px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  font-size: 11px;
+}
+
+.shopgo-retail-stock-filter {
+  padding: 15px 18px;
+  border-top: 1px solid #e5ebe7;
+}
+
+.shopgo-retail-stock-filter label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #3c4c42;
+  font-size: 11px;
+}
+
+.shopgo-retail-stock-filter input {
+  accent-color: var(--retail-green);
+}
+
+.shopgo-retail-coming-filter {
+  display: flex;
+  gap: 9px;
+  padding: 15px 18px;
+  border-top: 1px solid #e5ebe7;
+  color: #08703a;
+  background: #f6fbf7;
+}
+
+.shopgo-retail-coming-filter strong,
+.shopgo-retail-coming-filter small {
+  display: block;
+}
+
+.shopgo-retail-coming-filter strong {
+  color: #344139;
+  font-size: 10px;
+}
+
+.shopgo-retail-coming-filter small {
+  margin-top: 3px;
+  color: #758079;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.shopgo-retail-reset-filter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: calc(100% - 24px);
+  margin: 12px;
+  padding: 10px;
+  border: 1px solid #dce4de;
+  border-radius: 9px;
+  color: #3f4c44;
+  background: #fff;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.shopgo-retail-pickup-note {
+  margin: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  background: #eaf7ed;
+}
+
+.shopgo-retail-pickup-note h3 {
+  margin: 9px 0 5px;
+}
+
+.shopgo-retail-pickup-note p {
+  font-size: 9px;
+}
+
+.shopgo-retail-catalog-toolbar {
+  min-height: 48px;
+  margin-bottom: 13px;
+  padding: 0 4px;
+  border: 0;
+}
+
+.shopgo-retail-catalog-toolbar span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #19261e;
+  font-size: 15px;
+  font-weight: 820;
+}
+
+.shopgo-retail-catalog-toolbar small {
+  padding: 8px 11px;
+  border: 1px solid #dfe6e1;
+  border-radius: 9px;
+  color: #65716a;
+  background: #fff;
+  font-size: 9px;
+}
+
+.shopgo-retail-product-results .product-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.shopgo-retail-product-card {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #e0e6e2;
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(25, 54, 36, 0.035);
+}
+
+.shopgo-retail-product-card:hover {
+  border-color: #a6d5b7;
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px rgba(21, 94, 51, 0.1);
+}
+
+.shopgo-retail-favorite {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 4;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid #e1e7e3;
+  border-radius: 50%;
+  color: #7d8781;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.shopgo-retail-favorite:disabled {
+  opacity: 0.65;
+}
+
+.shopgo-retail-favorite:hover:not(:disabled),
+.shopgo-retail-favorite[aria-pressed='true'],
+.favorite-inline[aria-pressed='true'] svg {
+  color: #b82048;
+}
+
+.shopgo-retail-favorite[aria-pressed='true'] {
+  border-color: #e8a7b8;
+  background: #fff2f5;
+}
+
+.retail-favorites-page {
+  padding-top: 24px;
+  padding-bottom: 36px;
+}
+
+.retail-favorites-page .product-picture {
+  display: grid;
+  place-items: center;
+}
+
+.retail-favorites-page .visit-store-button:disabled {
+  background: var(--line);
+  color: var(--muted);
+}
+
+.shopgo-retail-product-card .product-picture {
+  min-height: 172px;
+  padding: 12px 12px 0;
+  background: linear-gradient(180deg, #fbfdfb 0%, #fff 100%);
+}
+
+.shopgo-retail-product-card .product-art {
+  width: 100%;
+  height: 155px;
+}
+
+.shopgo-retail-product-card .product-uploaded-image {
+  width: 100%;
+  height: 150px;
+  object-fit: contain;
+}
+
+.shopgo-retail-product-card .product-info {
+  display: flex;
+  min-height: 207px;
+  flex-direction: column;
+  padding: 12px 13px 13px;
+}
+
+.shopgo-retail-product-card .product-name {
+  min-height: 38px;
+  color: #1d2821;
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.4;
+}
+
+.shopgo-retail-product-card .product-info > p {
+  margin: 2px 0 6px;
+  color: #77817a;
+  font-size: 9px;
+}
+
+.shopgo-retail-product-card .product-store-line {
+  min-height: 43px;
+  margin: 0 0 4px;
+  color: #65736a;
+  font-size: 8px;
+}
+
+.shopgo-retail-product-card .product-store-line > span {
+  min-width: 0;
+}
+
+.shopgo-retail-product-card .product-store-line span,
+.shopgo-retail-product-card .product-store-line small {
+  display: block;
+}
+
+.shopgo-retail-product-card .product-store-line small {
+  margin-top: 2px;
+  overflow: hidden;
+  color: #7c8981;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shopgo-retail-product-card .stock-tag {
+  position: static;
+  display: inline-flex;
+  width: fit-content;
+  margin-top: auto;
+  padding: 0;
+  border: 0;
+  color: #07823e;
+  background: transparent;
+  font-size: 9px;
+  font-weight: 720;
+}
+
+.shopgo-retail-product-card .stock-tag::before {
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  content: '';
+}
+
+.shopgo-retail-product-card .stock-tag.sold {
+  color: #b14b45;
+}
+
+.shopgo-retail-product-expiry {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  margin-top: 5px;
+  color: #805700;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.shopgo-retail-expiry-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+}
+
+.shopgo-retail-product-card .product-bottom {
+  display: block;
+  margin-top: 8px;
+}
+
+.shopgo-retail-product-card .product-bottom > strong {
+  display: block;
+  margin-bottom: 9px;
+  color: #df1717;
+  font-size: 15px;
+  letter-spacing: -0.02em;
+}
+
+.shopgo-retail-product-card .add-button,
+.shopgo-retail-product-card .visit-store-button {
+  display: flex;
+  width: 100%;
+  min-height: 35px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 8px;
+  color: #fff;
+  background: linear-gradient(135deg, #0ba64e, #07843f);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.shopgo-retail-product-card .add-button {
+  position: static;
+  height: auto;
+  padding: 8px 10px;
+}
+
+.shopgo-retail-product-card .add-button:disabled {
+  color: #8a938e;
+  background: #e9eeeb;
+}
+
+.shopgo-retail-product-card .visit-store-button {
+  min-height: 42px;
+  padding: 7px;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.shopgo-retail-empty-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.shopgo-retail-journey {
+  display: grid;
+  grid-template-columns: 1.2fr repeat(3, 1fr);
+  align-items: center;
+  gap: 22px;
+  margin: 35px 0 10px;
+  padding: 29px 31px;
+  border: 1px solid #dfe7e1;
+  border-radius: 20px;
+  color: #1a2c21;
+  background: #fff;
+}
+
+.shopgo-retail-journey > h2 {
+  margin: 0;
+  font-size: 21px;
+  letter-spacing: -0.03em;
+}
+
+.shopgo-retail-journey .journey-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+}
+
+.shopgo-retail-journey .journey-step b {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  color: #06793a;
+  background: #e6f8eb;
+  font-size: 11px;
+}
+
+.shopgo-retail-journey .journey-step h3 {
+  margin: 0 0 3px;
+  font-size: 11px;
+}
+
+.shopgo-retail-journey .journey-step p {
+  margin: 0;
+  color: #748078;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+html[data-theme='dark'] .shopgo-retail-home {
+  --retail-card: #142119;
+  --retail-ink: #eaf4ed;
+  --retail-muted: #a5b3aa;
+  --retail-line: #33443a;
+}
+
+html[data-theme='dark'] .shopgo-retail-main-search,
+html[data-theme='dark'] .shopgo-retail-search-box,
+html[data-theme='dark'] .shopgo-retail-pickup-select,
+html[data-theme='dark'] .shopgo-retail-category-strip button,
+html[data-theme='dark'] .shopgo-retail-benefits,
+html[data-theme='dark'] .shopgo-retail-store-discovery,
+html[data-theme='dark'] .shopgo-retail-filter-panel,
+html[data-theme='dark'] .shopgo-retail-product-card,
+html[data-theme='dark'] .shopgo-retail-journey {
+  border-color: #34483b;
+  color: #eaf4ed;
+  background: #142119;
+}
+
+html[data-theme='dark'] .shopgo-retail-search-scope {
+  border-color: #34483b;
+  background: #18261d;
+}
+
+html[data-theme='dark'] .shopgo-retail-search-scope button {
+  color: #c6d3ca;
+}
+
+html[data-theme='dark'] .shopgo-retail-search-scope button.active {
+  border-color: #416f50;
+  color: #9fe0b0;
+  background: #203d2a;
+}
+
+html[data-theme='dark'] .shopgo-retail-main-search input,
+html[data-theme='dark'] .shopgo-retail-pickup-select select,
+html[data-theme='dark'] .shopgo-retail-product-card .product-name,
+html[data-theme='dark'] .shopgo-retail-catalog-toolbar span,
+html[data-theme='dark'] .shopgo-retail-journey,
+html[data-theme='dark'] .shopgo-retail-filter-panel h3 {
+  color: #edf7ef;
+}
+
+html[data-theme='dark'] .shopgo-retail-product-card .product-picture,
+html[data-theme='dark'] .shopgo-retail-store-discovery .store-scope-card {
+  background: #1a2a20;
+}
+
+html[data-theme='dark'] .shopgo-retail-filter-title,
+html[data-theme='dark'] .shopgo-retail-stock-filter label,
+html[data-theme='dark'] .shopgo-retail-product-card .product-info > p,
+html[data-theme='dark'] .shopgo-retail-product-card .product-store-line {
+  color: #bdcac1;
+}
+
+html[data-theme='dark'] .shopgo-retail-coming-filter {
+  border-color: #34483b;
+  color: #8ee2a5;
+  background: #1a2c20;
+}
+
+html[data-theme='dark'] .shopgo-retail-coming-filter strong {
+  color: #e1eee5;
+}
+
+html[data-theme='dark'] .shopgo-retail-coming-filter small {
+  color: #a8b7ad;
+}
+
+html[data-theme='dark'] .shopgo-retail-product-expiry {
+  color: #f0cc78;
+}
+
+@media (max-width: 1180px) {
+  .shopgo-retail-product-results .product-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .shopgo-retail-promo-grid > * {
+    padding: 21px;
+  }
+
+  .shopgo-retail-promo-grid h2 {
+    font-size: 18px;
+  }
+
+  .shopgo-retail-journey {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .shopgo-retail-hero {
+    min-height: 430px;
+  }
+
+  .shopgo-retail-hero-copy {
+    width: 65%;
+    padding: 50px 30px;
+  }
+
+  .shopgo-retail-hero-media {
+    left: 31%;
+    opacity: 0.72;
+  }
+
+  .shopgo-retail-floating-card {
+    display: none;
+  }
+
+  .shopgo-retail-shop-tools,
+  .shopgo-retail-promo-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .shopgo-retail-shop-tools {
+    margin-inline: 0;
+  }
+
+  .shopgo-retail-promo-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .shopgo-retail-promo-grid > * {
+    min-height: 180px;
+    align-items: flex-start;
+  }
+
+  .shopgo-retail-promo-grid > * > div {
+    max-width: 100%;
+  }
+
+  .shopgo-retail-promo-grid > * > svg {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    opacity: 0.25;
+  }
+
+  .shopgo-retail-store-discovery .store-scope-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .shopgo-retail-catalog-layout {
+    grid-template-columns: 205px minmax(0, 1fr);
+  }
+
+  .shopgo-retail-product-results .product-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .shopgo-retail-home {
+    padding-top: 10px;
+  }
+
+  .shopgo-retail-hero {
+    min-height: 530px;
+    border-radius: 18px;
+  }
+
+  .shopgo-retail-hero-copy {
+    width: 100%;
+    padding: 34px 24px;
+  }
+
+  .shopgo-retail-hero-copy h1 {
+    font-size: 43px;
+  }
+
+  .shopgo-retail-hero-copy > p:not(.shopgo-retail-kicker) {
+    width: 82%;
+    font-size: 13px;
+  }
+
+  .shopgo-retail-hero-points {
+    width: 70%;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .shopgo-retail-hero-media {
+    inset: auto 0 0 0;
+    height: 245px;
+    opacity: 1;
+    background-image:
+      linear-gradient(180deg, #effbf4 0%, rgba(239, 251, 244, 0.2) 35%, transparent 55%),
+      url('/shopgo-retail-hero-v1.webp');
+    background-position: 62% center;
+  }
+
+  .shopgo-retail-hero-action {
+    margin-top: 19px;
+  }
+
+  .shopgo-retail-shop-tools {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-block: 13px;
+  }
+
+  .shopgo-retail-main-search > button {
+    min-width: 52px;
+    color: transparent;
+    font-size: 0;
+  }
+
+  .shopgo-retail-main-search > button::after {
+    color: #fff;
+    content: '→';
+    font-size: 20px;
+  }
+
+  .shopgo-retail-search-scope button {
+    padding-inline: 8px;
+  }
+
+  .shopgo-retail-search-scope strong {
+    font-size: 9px;
+  }
+
+  .shopgo-retail-search-scope small {
+    font-size: 7px;
+  }
+
+  .shopgo-retail-empty-actions {
+    flex-direction: column;
+  }
+
+  .shopgo-retail-category-strip {
+    grid-auto-columns: 102px;
+    margin-top: 2px;
+  }
+
+  .shopgo-retail-category-strip button {
+    min-height: 84px;
+  }
+
+  .shopgo-retail-promo-grid {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+  }
+
+  .shopgo-retail-promo-grid > * {
+    min-width: 265px;
+    min-height: 150px;
+  }
+
+  .shopgo-retail-benefits {
+    display: none;
+  }
+
+  .shopgo-retail-store-discovery {
+    padding: 18px;
+  }
+
+  .shopgo-retail-store-discovery .store-scope-list {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 5px;
+  }
+
+  .shopgo-retail-store-discovery .store-scope-card {
+    min-width: 250px;
+  }
+
+  .shopgo-retail-catalog-heading {
+    display: block;
+  }
+
+  .shopgo-retail-catalog-heading p {
+    margin-top: 7px;
+  }
+
+  .shopgo-retail-catalog-layout {
+    display: block;
+  }
+
+  .shopgo-retail-filter-panel {
+    position: static;
+    margin-bottom: 15px;
+  }
+
+  .shopgo-retail-filter-panel .category-menu,
+  .shopgo-retail-coming-filter,
+  .shopgo-retail-pickup-note {
+    display: none;
+  }
+
+  .shopgo-retail-filter-title {
+    padding: 13px 15px;
+  }
+
+  .shopgo-retail-stock-filter {
+    display: inline-block;
+    width: calc(100% - 48px);
+    border: 0;
+    padding: 13px 15px;
+  }
+
+  .shopgo-retail-reset-filter {
+    display: inline-flex;
+    width: auto;
+    margin: 8px 8px 8px 0;
+  }
+
+  .shopgo-retail-product-results .product-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+
+  .shopgo-retail-product-card .product-picture {
+    min-height: 135px;
+  }
+
+  .shopgo-retail-product-card .product-art,
+  .shopgo-retail-product-card .product-uploaded-image {
+    height: 125px;
+  }
+
+  .shopgo-retail-product-card .product-info {
+    min-height: 213px;
+    padding: 10px;
+  }
+
+  .shopgo-retail-product-card .product-store-line {
+    min-height: 38px;
+  }
+
+  .shopgo-retail-product-card .add-button span {
+    display: none;
+  }
+
+  .shopgo-retail-journey {
+    display: block;
+    padding: 24px 20px;
+  }
+
+  .shopgo-retail-journey > h2 {
+    margin-bottom: 20px;
+  }
+
+  .shopgo-retail-journey .journey-step + .journey-step {
+    margin-top: 16px;
+  }
+}
+
+@media (max-width: 390px) {
+  .shopgo-retail-product-results .product-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .shopgo-retail-product-card .product-info {
+    min-height: 190px;
+  }
+}

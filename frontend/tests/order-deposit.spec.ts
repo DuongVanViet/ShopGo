@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { choosePickupStore } from './store-picker';
 
 const store = {
   id: '91000000-0000-4000-a000-000000000001',
@@ -147,6 +148,7 @@ test('customer defaults to the rounded 15% deposit, can choose full online, and 
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   let currentOrder = depositOrder();
+  let quoteRequests = 0;
   let orderRequest:
     | { body: Record<string, unknown>; authorization?: string; idempotency?: string }
     | undefined;
@@ -187,9 +189,15 @@ test('customer defaults to the rounded 15% deposit, can choose full online, and 
           },
         ],
       });
-    if (path === `/stores/${store.id}/slots` && method === 'GET')
-      return fulfill(route, [slot]);
-    if (path === '/checkout/quotes' && method === 'POST') return fulfill(route, quote, 201);
+    if (path === `/stores/${store.id}/slots` && method === 'GET') return fulfill(route, [slot]);
+    if (path === '/checkout/quotes' && method === 'POST') {
+      quoteRequests++;
+      return fulfill(
+        route,
+        quoteRequests === 1 ? { ...quote, expiresAt: new Date(0).toISOString() } : quote,
+        201,
+      );
+    }
     if (path === '/orders' && method === 'POST') {
       orderRequest = {
         body: request.postDataJSON(),
@@ -254,13 +262,21 @@ test('customer defaults to the rounded 15% deposit, can choose full online, and 
 
   await login(page, customer.emailNormalized);
   await expect(page).toHaveURL(/\/$/);
-  await page.getByLabel('Chọn cửa hàng', { exact: true }).selectOption(store.id);
-  await page.goto('/thanh-toan');
+  await choosePickupStore(page, store.name);
+  await page.getByRole('link', { name: /Giỏ hàng/ }).click();
+  await page.getByRole('link', { name: 'Tiếp tục đặt hàng', exact: true }).click();
   await expect(page.getByText('Sản phẩm kiểm thử đặt cọc', { exact: true })).toBeVisible();
 
   await page.getByRole('radio', { name: /Còn 19 suất/ }).check();
   await expect(page.getByRole('radio', { name: /Đặt cọc 15% online/ })).toBeChecked();
   await page.getByRole('button', { name: /Xem tổng thanh toán/ }).click();
+  await expect(
+    page.getByRole('button', { name: /Đặt đơn & tiếp tục thanh toán cọc/ }),
+  ).toBeDisabled();
+  await page.getByRole('button', { name: 'Cập nhật báo giá' }).click();
+  await expect(
+    page.getByRole('button', { name: /Đặt đơn & tiếp tục thanh toán cọc/ }),
+  ).toBeEnabled();
 
   const breakdown = page.getByLabel('Chi tiết thanh toán');
   await expect(breakdown.getByText('Thanh toán cọc online (15%)', { exact: true })).toBeVisible();
@@ -274,7 +290,7 @@ test('customer defaults to the rounded 15% deposit, can choose full online, and 
   await expect(breakdown.getByText(/^0/)).toBeVisible();
 
   await page.getByRole('radio', { name: /Đặt cọc 15% online/ }).check();
-  await page.getByRole('button', { name: /Đặt đơn & thanh toán cọc/ }).click();
+  await page.getByRole('button', { name: /Đặt đơn & tiếp tục thanh toán cọc/ }).click();
   await expect(page).toHaveURL(new RegExp(`/don-hang/${orderId}$`));
   expect(orderRequest).toMatchObject({
     body: { quoteId, paymentMethod: 'PAY_AT_PICKUP', expectedCartVersion: 4 },
@@ -302,13 +318,46 @@ test('customer defaults to the rounded 15% deposit, can choose full online, and 
   });
   expect(confirmRequest?.idempotency).toBeTruthy();
   await expect(page.getByText('Đã thanh toán cọc', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Tiếp tục thanh toán', exact: true })).toHaveCount(0);
+  const fulfillment = page.locator('.retail-order-fulfillment-card');
+  await expect(fulfillment).toBeVisible();
+  await expect(fulfillment.getByRole('radio', { name: /Đến cửa hàng lấy/ })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  await expect(fulfillment.getByRole('button', { name: /Đặt ship giao tận nơi/ })).toBeDisabled();
+  await expect(fulfillment.getByText('Sắp ra mắt', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Tiếp tục thanh toán', exact: true })).toHaveCount(
+    0,
+  );
+
+  currentOrder = depositOrder({
+    status: 'CONFIRMED',
+    paymentStatus: 'PAID',
+    paymentMethod: 'ONLINE',
+    paymentPlan: 'FULL_ONLINE',
+    depositPercent: 0,
+    depositAmount: 0,
+    amountDueNow: 0,
+    remainingAmount: 0,
+    amountPaid: total,
+    amountRemaining: 0,
+    version: 3,
+  });
+  await page.getByRole('button', { name: 'Cập nhật trạng thái', exact: true }).click();
+  const fullPaymentFulfillment = page.locator('.retail-order-fulfillment-card');
+  await expect(fullPaymentFulfillment).toBeVisible();
+  await expect(fullPaymentFulfillment).toContainText('Bạn không cần thanh toán thêm tại quầy.');
+  await expect(
+    fullPaymentFulfillment.getByRole('button', { name: /Đặt ship giao tận nơi/ }),
+  ).toBeDisabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
     true,
   );
 });
 
-test('counter collects only the exact remaining balance after the 15% deposit', async ({ page }) => {
+test('counter collects only the exact remaining balance after the 15% deposit', async ({
+  page,
+}) => {
   let currentOrder = depositOrder({
     status: 'READY',
     paymentStatus: 'PARTIALLY_PAID',
@@ -347,6 +396,7 @@ test('counter collects only the exact remaining balance after the 15% deposit', 
     if (path === '/auth/login' && method === 'POST')
       return fulfill(route, { accessToken: `${counterId}-token` });
     if (path === '/me' && method === 'GET') return fulfill(route, counter);
+    if (path === `/stores/${store.id}` && method === 'GET') return fulfill(route, store);
     if (path === '/cart' && method === 'GET')
       return fulfill(route, { id: cartId, storeId: store.id, version: 1, items: [] });
     if (path === `/stores/${store.id}/pickup/lookup` && method === 'POST')
@@ -382,7 +432,9 @@ test('counter collects only the exact remaining balance after the 15% deposit', 
   await expect(page.getByLabel('Đối soát tiền cọc')).toContainText(/8\.500/);
   const collect = page.getByRole('button', { name: /Xác nhận đã thu 8\.500/ });
   await expect(collect).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Xác nhận bàn giao hàng', exact: true })).toBeDisabled();
+  await expect(
+    page.getByRole('button', { name: 'Xác nhận bàn giao hàng', exact: true }),
+  ).toBeDisabled();
   await collect.click();
 
   expect(collectionRequest).toMatchObject({

@@ -2,20 +2,33 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, ArrowRight, CreditCard, MapPin, ShieldCheck, WalletCards } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  CalendarDays,
+  CheckCircle2,
+  CreditCard,
+  MapPin,
+  ShieldCheck,
+  ShoppingBag,
+  Store,
+  WalletCards,
+} from 'lucide-react';
 import { useShop } from '@/store/shop';
 import { useResource } from '@/hooks/use-resource';
 import { api, ApiError } from '@/lib/api';
 import { dateTime, money, time } from '@/lib/format';
 import type { Order, PaymentBreakdown, PaymentMethod, Quote, Slot } from '@/types';
 import { AccessGate, Empty, ErrorBox, Loading, PageTitle } from '@/components/ui';
+import { useSelectedVoucher, VoucherPicker } from '@/features/promotions/voucher-picker';
+import { ProductPrice } from '@/components/product-price';
 
 export function CheckoutView() {
   const shop = useShop(),
     router = useRouter();
   const slots = useResource<Slot[]>(shop.store ? `/stores/${shop.store.id}/slots` : null);
+  const selectedVoucher = useSelectedVoucher();
   const [slotId, setSlotId] = useState(''),
-    [voucher, setVoucher] = useState(''),
     [quote, setQuote] = useState<Quote | null>(null),
     [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PAY_AT_PICKUP'),
     [busy, setBusy] = useState(false),
@@ -33,6 +46,9 @@ export function CheckoutView() {
     setUncertain(false);
     setError(null);
   }, [shop.store?.id, shop.user?.id, shop.cart?.version]);
+  useEffect(() => {
+    setQuote(null);
+  }, [shop.voucherCode]);
   async function getQuote() {
     if (!shop.cart) return;
     setBusy(true);
@@ -46,7 +62,7 @@ export function CheckoutView() {
             cartId: shop.cart.id,
             cartVersion: shop.cart.version,
             slotId,
-            ...(voucher.trim() ? { voucherCode: voucher.trim() } : {}),
+            ...(shop.voucherCode ? { voucherCode: shop.voucherCode } : {}),
           },
         }),
       );
@@ -73,12 +89,15 @@ export function CheckoutView() {
         },
       });
       shop.notice(
-        paymentMethod === 'PAY_AT_PICKUP'
-          ? 'Đơn đã được tạo. Hãy thanh toán khoản cọc để cửa hàng xác nhận.'
-          : 'Đơn đã được tạo. Hãy hoàn tất thanh toán online.',
+        result.amountDueNow === 0
+          ? 'Đơn đã được xác nhận.'
+          : paymentMethod === 'PAY_AT_PICKUP'
+            ? 'Đơn đã được tạo. Hãy thanh toán khoản cọc để cửa hàng xác nhận.'
+            : 'Đơn đã được tạo. Hãy hoàn tất thanh toán online.',
       );
       router.push(`/don-hang/${result.id}`);
-      void shop.refreshCart();
+      shop.setVoucherCode('');
+      void shop.refreshCart().catch(() => {});
     } catch (e) {
       setError(e);
       if (!(e instanceof ApiError) || e.status === 0 || e.status >= 500) setUncertain(true);
@@ -94,7 +113,7 @@ export function CheckoutView() {
   const payment = quote ? paymentBreakdown(quote, paymentMethod) : null;
   return (
     <AccessGate>
-      <div className="container">
+      <div className="container retail-checkout-page retail-order-checkout-page">
         <PageTitle
           eyebrow="SẮP XONG RỒI"
           title="Hẹn giờ nhận hàng"
@@ -107,86 +126,104 @@ export function CheckoutView() {
           }
         />
         <ErrorBox error={shop.cartError} retry={() => void shop.refreshCart().catch(() => {})} />
-        {!shop.cart ? (
+        {shop.store && !shop.cart ? (
           !shop.cartError && <Loading />
-        ) : !shop.cart.items.length ? (
+        ) : !shop.cart?.items.length ? (
           <Empty title="Chưa có sản phẩm để đặt">
             <Link className="button" href="/">
               Về cửa hàng
             </Link>
           </Empty>
         ) : (
-          <div className="checkout-grid">
-            <div className="stack">
-              <section className="panel">
-                <h2 className="form-section-title">
-                  <span className="step-number">1</span>Nhận tại cửa hàng
-                </h2>
-                <div className="row">
-                  <MapPin size={22} />
+          <div className="retail-order-checkout-grid">
+            <div className="retail-checkout-main">
+              <section className="panel retail-fulfillment-card">
+                <div className="retail-card-heading">
+                  <span className="retail-heading-icon">
+                    <MapPin size={24} />
+                  </span>
                   <div>
-                    <strong>{shop.store?.name}</strong>
-                    <p className="muted">{shop.store?.address}</p>
+                    <h2>Thông tin nhận hàng</h2>
+                    <p>Chọn cửa hàng và thời gian phù hợp với bạn</p>
                   </div>
                 </div>
-              </section>
-              <section className="panel">
-                <h2 className="form-section-title">
-                  <span className="step-number">2</span>Chọn khung giờ
-                </h2>
-                <ErrorBox error={slots.error} retry={slots.refresh} />
-                {slots.loading ? (
-                  <Loading />
-                ) : !slots.data?.length ? (
-                  <div className="warning-note">
-                    Chưa có khung giờ còn nhận đơn. Quản lý có thể mở thêm khung giờ ở mục Quản lý
-                    cửa hàng.
+
+                <div className="retail-checkout-section">
+                  <div className="retail-section-label">
+                    <Store size={19} />
+                    <div>
+                      <strong>Địa điểm lấy hàng</strong>
+                      <small>Cửa hàng đang phục vụ giỏ hàng này</small>
+                    </div>
                   </div>
-                ) : (
-                  <div className="slot-grid">
-                    {slots.data.map((slot) => (
-                      <label className="slot-option" key={slot.id}>
-                        <input
-                          type="radio"
-                          name="slot"
-                          value={slot.id}
-                          checked={slotId === slot.id}
-                          disabled={busy || uncertain}
-                          onChange={() => {
-                            setSlotId(slot.id);
-                            setQuote(null);
-                          }}
-                        />
-                        <b>
-                          {time(slot.startsAt)} – {time(slot.endsAt)}
-                        </b>
-                        <small>
-                          {dateTime(slot.startsAt).split(' ')[0]} · Còn {slot.available} suất
-                        </small>
-                      </label>
-                    ))}
+                  <div className="retail-store-choice">
+                    <span>
+                      <Store size={22} />
+                    </span>
+                    <div>
+                      <strong>{shop.store?.name}</strong>
+                      <p>{shop.store?.address}</p>
+                    </div>
+                    <CheckCircle2 size={20} />
                   </div>
-                )}
+                </div>
+
+                <div className="retail-checkout-section">
+                  <div className="retail-section-label">
+                    <CalendarDays size={19} />
+                    <div>
+                      <strong>Thời gian nhận hàng</strong>
+                      <small>Chọn một khung giờ cửa hàng còn nhận</small>
+                    </div>
+                  </div>
+                  <ErrorBox error={slots.error} retry={slots.refresh} />
+                  {slots.loading ? (
+                    <Loading />
+                  ) : !slots.data?.length ? (
+                    <div className="warning-note">
+                      Chưa có khung giờ còn nhận đơn. Quản lý có thể mở thêm khung giờ ở mục Quản lý
+                      cửa hàng.
+                    </div>
+                  ) : (
+                    <div className="slot-grid retail-slot-grid">
+                      {slots.data.map((slot) => (
+                        <label className="slot-option retail-slot-option" key={slot.id}>
+                          <input
+                            type="radio"
+                            name="slot"
+                            value={slot.id}
+                            checked={slotId === slot.id}
+                            disabled={busy || uncertain}
+                            onChange={() => {
+                              setSlotId(slot.id);
+                              setQuote(null);
+                            }}
+                          />
+                          <b>
+                            {time(slot.startsAt)} – {time(slot.endsAt)}
+                          </b>
+                          <small>
+                            {dateTime(slot.startsAt).split(' ')[0]} · Còn {slot.available} suất
+                          </small>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </section>
-              <section className="panel form-stack">
-                <h2 className="form-section-title">
-                  <span className="step-number">3</span>Ưu đãi & cách thanh toán
-                </h2>
-                <label>
-                  Mã ưu đãi
-                  <input
-                    placeholder="Nhập voucher nếu có"
-                    value={voucher}
-                    disabled={busy || uncertain}
-                    onChange={(e) => {
-                      setVoucher(e.target.value);
-                      setQuote(null);
-                    }}
-                    maxLength={40}
-                  />
-                </label>
+
+              <section className="panel retail-payment-card">
+                <div className="retail-card-heading compact">
+                  <span className="retail-heading-icon">
+                    <WalletCards size={22} />
+                  </span>
+                  <div>
+                    <h2>Phương thức thanh toán</h2>
+                    <p>Chọn khoản thanh toán ban đầu</p>
+                  </div>
+                </div>
                 <div
-                  className="payment-plan-options"
+                  className="payment-plan-options retail-payment-options"
                   role="radiogroup"
                   aria-label="Cách thanh toán"
                 >
@@ -226,25 +263,49 @@ export function CheckoutView() {
                     </span>
                   </label>
                 </div>
+              </section>
+            </div>
+
+            <aside className="panel summary retail-checkout-summary">
+              <div className="retail-summary-title">
+                <ShoppingBag size={22} />
+                <div>
+                  <h2>Xác nhận đơn hàng</h2>
+                  <small>{shop.cart.items.length} dòng sản phẩm</small>
+                </div>
+              </div>
+              <div className="retail-summary-items">
+                {shop.cart.items.map((item) => (
+                  <div className="summary-line" key={item.skuId}>
+                    <span>
+                      {item.quantity} × {item.name}
+                    </span>
+                    <ProductPrice
+                      price={item.price * item.quantity}
+                      originalPrice={
+                        item.originalPrice ? item.originalPrice * item.quantity : undefined
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <VoucherPicker
+                preview={selectedVoucher}
+                disabled={busy || uncertain}
+                onChange={() => setQuote(null)}
+              />
+
+              {(!quote || (expired && !uncertain)) && (
                 <button
-                  className="button secondary"
+                  className="button wide retail-quote-button"
                   disabled={!slotId || busy || uncertain}
                   onClick={() => void getQuote()}
                 >
-                  Xem tổng thanh toán <ArrowRight size={16} />
+                  {expired ? 'Cập nhật báo giá' : 'Xem tổng thanh toán'} <ArrowRight size={16} />
                 </button>
-              </section>
-            </div>
-            <aside className="panel summary">
-              <h2>Xác nhận túi của bạn</h2>
-              {shop.cart.items.map((item) => (
-                <div className="summary-line" key={item.skuId}>
-                  <span>
-                    {item.quantity} × {item.name}
-                  </span>
-                  <strong>{money(item.price * item.quantity)}</strong>
-                </div>
-              ))}
+              )}
+
               {quote ? (
                 <>
                   <div className="summary-line">
@@ -276,12 +337,14 @@ export function CheckoutView() {
                     </div>
                   )}
                   <small>
-                    {expired
-                      ? 'Báo giá đã hết hạn. Vui lòng xem lại tổng thanh toán.'
-                      : `Báo giá còn ${Math.max(0, Math.ceil((new Date(quote.expiresAt).getTime() - now) / 1000))} giây.`}
+                    {uncertain
+                      ? 'Chưa xác định được kết quả đặt đơn. Hãy kiểm tra lại giao dịch.'
+                      : expired
+                        ? 'Báo giá đã hết hạn. Hãy cập nhật báo giá để tiếp tục.'
+                        : `Báo giá còn ${Math.max(0, Math.ceil((new Date(quote.expiresAt).getTime() - now) / 1000))} giây.`}
                   </small>
                   <button
-                    className="button wide"
+                    className="button wide retail-primary-cta"
                     disabled={busy || (expired && !uncertain)}
                     onClick={() => void placeOrder()}
                   >
@@ -290,15 +353,17 @@ export function CheckoutView() {
                       : uncertain
                         ? 'Kiểm tra lại giao dịch'
                         : paymentMethod === 'PAY_AT_PICKUP'
-                          ? `Đặt đơn & thanh toán cọc ${money(payment?.amountDueNow)}`
-                          : `Đặt đơn & thanh toán ${money(payment?.amountDueNow)}`}
+                          ? `Đặt đơn & tiếp tục thanh toán cọc ${money(payment?.amountDueNow)}`
+                          : `Đặt đơn & tiếp tục thanh toán ${money(payment?.amountDueNow)}`}
                     <ArrowRight size={17} />
                   </button>
                 </>
               ) : (
-                <div className="info-note">
-                  <ShieldCheck size={17} style={{ marginBottom: 7 }} />
-                  Chọn giờ rồi bấm “Xem tổng thanh toán” để nhận giá chính xác từ cửa hàng.
+                <div className="info-note retail-quote-note">
+                  <ShieldCheck size={17} />
+                  <span>
+                    Chọn giờ rồi bấm “Xem tổng thanh toán” để nhận giá chính xác từ cửa hàng.
+                  </span>
                 </div>
               )}
               <ErrorBox error={error} />

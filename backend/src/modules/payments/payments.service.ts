@@ -177,6 +177,7 @@ export class PaymentsService {
       if (
         input.merchant !== 'shopgo-local' ||
         input.amount !== payment.amount ||
+        payment.amount !== order.amount_due_now ||
         input.currency !== payment.currency
       )
         fail('PAYMENT_AMOUNT_MISMATCH', 'Merchant, số tiền hoặc tiền tệ không khớp.', 422);

@@ -10,6 +10,8 @@ import {
   ProductDiscoveryController,
 } from './modules/catalog/catalog.controller';
 import { CatalogService } from './modules/catalog/catalog.service';
+import { FavoritesController } from './modules/catalog/favorites.controller';
+import { FavoritesService } from './modules/catalog/favorites.service';
 import { CartController } from './modules/cart/cart.controller';
 import { CartService } from './modules/cart/cart.service';
 import { OrdersController } from './modules/orders/orders.controller';
@@ -28,6 +30,8 @@ import { AiController } from './modules/ai-gateway/ai.controller';
 import { AiService } from './modules/ai-gateway/ai.service';
 import { HealthController } from './health.controller';
 import { JobsService } from './jobs/jobs.service';
+import { PromotionsController } from './modules/promotions/promotions.controller';
+import { PromotionsService } from './modules/promotions/promotions.service';
 
 @Global()
 @Module({ providers: [{ provide: ENV, useFactory: loadEnv }, Db], exports: [ENV, Db] })
@@ -35,8 +39,8 @@ class InfrastructureModule {}
 @Module({ controllers: [AuthController], providers: [AuthService], exports: [AuthService] })
 class AuthModule {}
 @Module({
-  controllers: [CatalogController, ProductDiscoveryController],
-  providers: [CatalogService],
+  controllers: [CatalogController, ProductDiscoveryController, FavoritesController],
+  providers: [CatalogService, FavoritesService],
   exports: [CatalogService],
 })
 class CatalogModule {}
@@ -50,7 +54,10 @@ class FulfillmentModule {}
 class PaymentsModule {}
 @Module({ controllers: [InventoryController], providers: [InventoryService] })
 class InventoryModule {}
-@Module({ controllers: [ManagementController, SellerController], providers: [ManagementService] })
+@Module({
+  controllers: [ManagementController, SellerController, PromotionsController],
+  providers: [ManagementService, PromotionsService],
+})
 class ManagementModule {}
 @Module({ controllers: [SupportController] })
 class NotificationsModule {}

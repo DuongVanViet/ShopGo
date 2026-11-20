@@ -3,6 +3,11 @@ import { ShopProvider } from '@/store/shop';
 import { ThemeProvider } from '@/store/theme';
 import { Shell } from '@/components/layout/shell';
 import '@/styles/globals.css';
+import '@/styles/retail-shell.css';
+import '@/styles/retail-catalog.css';
+import '@/styles/retail-checkout.css';
+import '@/styles/retail-orders.css';
+import '@/styles/promotions.css';
 import 'leaflet/dist/leaflet.css';
 export const metadata: Metadata = {
   title: { default: 'ShopGo — Mua tươi ngon, nhận thảnh thơi', template: '%s | ShopGo' },

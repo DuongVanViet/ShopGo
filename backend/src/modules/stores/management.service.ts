@@ -218,7 +218,8 @@ export class ManagementService {
     const items = await rows(
       this.db.pool,
       `SELECT s.id,p.id AS product_id,s.id AS sku_id,p.name,p.description,p.category_id,c.name AS category_name,
-       s.code,s.barcode,s.unit,ss.price,ss.active,ss.version,b.on_hand,b.reserved,
+       s.code,s.barcode,s.unit,ss.price,ss.active,to_char(ss.expires_on,'YYYY-MM-DD') AS expires_on,
+       ss.version,ss.sale_price,ss.sale_starts_at,ss.sale_ends_at,b.on_hand,b.reserved,
        CASE WHEN pi.storage_key IS NULL THEN NULL ELSE '${PRODUCT_IMAGE_URL_PREFIX}'||pi.storage_key END AS image_url,
        b.on_hand-b.reserved AS available
        FROM store_skus ss JOIN skus s ON s.id=ss.sku_id JOIN products p ON p.id=s.product_id
@@ -266,10 +267,183 @@ export class ManagementService {
           reserved: 0,
           available: input.initialStock,
           active: true,
+          expiresOn: input.expiresOn ?? null,
           version: 1,
           imageUrl: null,
         };
       });
+    });
+  }
+  updateCatalogProduct(
+    actor: Actor,
+    storeId: string,
+    skuId: string,
+    input: any,
+    key: string | undefined,
+    requestId: string,
+  ) {
+    return this.db.tx(async (tx) => {
+      await storeAccess(tx, actor, storeId, ['MANAGER']);
+      return idempotent(
+        tx,
+        actor.id,
+        `catalog.product.update:${storeId}:${skuId}`,
+        key,
+        input,
+        async () => {
+          const old = must(
+            await one(
+              tx,
+              `SELECT ss.*,s.product_id,s.code,s.barcode,s.name AS sku_name,s.unit,
+               p.name,p.description,p.category_id
+               FROM store_skus ss JOIN skus s ON s.id=ss.sku_id
+               JOIN products p ON p.id=s.product_id
+               WHERE ss.store_id=$1 AND ss.sku_id=$2
+               FOR UPDATE OF ss,s,p`,
+              [storeId, skuId],
+            ),
+            'PRODUCT_NOT_IN_STORE',
+            'Sản phẩm không thuộc cửa hàng này.',
+            404,
+          );
+          expected(old, input.expectedVersion);
+          const discount =
+            input.discount === undefined
+              ? old.sale_price === null
+                ? null
+                : {
+                    price: old.sale_price,
+                    startsAt: old.sale_starts_at,
+                    endsAt: old.sale_ends_at,
+                  }
+              : input.discount;
+          if (
+            discount &&
+            (discount.price >= input.price ||
+              new Date(discount.startsAt) >= new Date(discount.endsAt))
+          )
+            fail(
+              'INVALID_DISCOUNT',
+              'Giá giảm phải thấp hơn giá gốc và thời gian kết thúc phải sau thời gian bắt đầu.',
+              422,
+            );
+          const category = must(
+            await one(
+              tx,
+              'SELECT id,name FROM categories WHERE id=$1 AND (owner_store_id IS NULL OR owner_store_id=$2)',
+              [input.categoryId, storeId],
+            ),
+            'CATEGORY_NOT_AVAILABLE',
+            'Danh mục không thuộc cửa hàng này.',
+            422,
+          );
+          const code = input.sku.code.trim().toUpperCase();
+          const barcode = input.sku.barcode?.trim() || null;
+          const sharedWithAnotherStore = await one(
+            tx,
+            'SELECT 1 AS shared FROM store_skus WHERE sku_id=$1 AND store_id<>$2 LIMIT 1',
+            [skuId, storeId],
+          );
+          const changesSharedMetadata =
+            input.name !== old.name ||
+            input.description !== old.description ||
+            input.categoryId !== old.category_id ||
+            code !== old.code ||
+            barcode !== old.barcode ||
+            input.sku.name !== old.sku_name ||
+            input.sku.unit !== old.unit;
+          if (sharedWithAnotherStore && changesSharedMetadata && !actor.is_admin)
+            fail(
+              'SHARED_PRODUCT_METADATA_LOCKED',
+              'Sản phẩm đang được nhiều cửa hàng sử dụng. Manager chỉ có thể đổi giá, trạng thái bán và hạn tại cửa hàng của mình.',
+              409,
+            );
+          await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
+            `sku:${code}:${barcode ?? ''}`,
+          ]);
+          if (
+            await one(
+              tx,
+              'SELECT id FROM skus WHERE id<>$1 AND (code=$2 OR ($3::text IS NOT NULL AND barcode=$3))',
+              [skuId, code, barcode],
+            )
+          )
+            fail('SKU_EXISTS', 'Mã SKU hoặc mã vạch đã được sản phẩm khác sử dụng.', 409);
+
+          await tx.query('UPDATE products SET name=$2,description=$3,category_id=$4 WHERE id=$1', [
+            old.product_id,
+            input.name,
+            input.description,
+            input.categoryId,
+          ]);
+          await tx.query('UPDATE skus SET code=$2,barcode=$3,name=$4,unit=$5 WHERE id=$1', [
+            skuId,
+            code,
+            barcode,
+            input.sku.name,
+            input.sku.unit,
+          ]);
+          await tx.query(
+            `UPDATE store_skus SET price=$3,active=$4,expires_on=$5,sale_price=$6,sale_starts_at=$7,sale_ends_at=$8,
+             version=version+1,updated_at=now() WHERE store_id=$1 AND sku_id=$2`,
+            [
+              storeId,
+              skuId,
+              input.price,
+              input.active,
+              input.expiresOn,
+              discount?.price ?? null,
+              discount?.startsAt ?? null,
+              discount?.endsAt ?? null,
+            ],
+          );
+          await audit(tx, actor.id, 'catalog.product.update', 'sku', skuId, requestId, {
+            storeId,
+            before: {
+              name: old.name,
+              categoryId: old.category_id,
+              code: old.code,
+              barcode: old.barcode,
+              unit: old.unit,
+              price: old.price,
+              active: old.active,
+              expiresOn: old.expires_on,
+              discount: {
+                price: old.sale_price,
+                startsAt: old.sale_starts_at,
+                endsAt: old.sale_ends_at,
+              },
+            },
+            after: {
+              name: input.name,
+              categoryId: input.categoryId,
+              code,
+              barcode,
+              unit: input.sku.unit,
+              price: input.price,
+              active: input.active,
+              expiresOn: input.expiresOn,
+              discount,
+            },
+          });
+          return must(
+            await one(
+              tx,
+              `SELECT s.id,p.id AS product_id,s.id AS sku_id,p.name,p.description,p.category_id,
+               c.name AS category_name,s.code,s.barcode,s.unit,ss.price,ss.active,
+               to_char(ss.expires_on,'YYYY-MM-DD') AS expires_on,
+               ss.version,ss.sale_price,ss.sale_starts_at,ss.sale_ends_at,b.on_hand,b.reserved,b.on_hand-b.reserved AS available,
+               CASE WHEN pi.storage_key IS NULL THEN NULL ELSE '${PRODUCT_IMAGE_URL_PREFIX}'||pi.storage_key END AS image_url
+               FROM store_skus ss JOIN skus s ON s.id=ss.sku_id
+               JOIN products p ON p.id=s.product_id LEFT JOIN categories c ON c.id=p.category_id
+               LEFT JOIN product_images pi ON pi.product_id=p.id
+               JOIN inventory_balances b ON b.store_id=ss.store_id AND b.sku_id=ss.sku_id
+               WHERE ss.store_id=$1 AND ss.sku_id=$2`,
+              [storeId, skuId],
+            ),
+          );
+        },
+      );
     });
   }
   async uploadCatalogProductImage(
@@ -515,10 +689,11 @@ export class ManagementService {
         [product.id, code, barcode, input.sku.name, input.sku.unit],
       ),
     );
-    await tx.query('INSERT INTO store_skus(store_id,sku_id,price) VALUES($1,$2,$3)', [
+    await tx.query('INSERT INTO store_skus(store_id,sku_id,price,expires_on) VALUES($1,$2,$3,$4)', [
       storeId,
       sku.id,
       input.price,
+      input.expiresOn ?? null,
     ]);
     await tx.query('INSERT INTO inventory_balances(store_id,sku_id,on_hand) VALUES($1,$2,$3)', [
       storeId,
@@ -555,6 +730,8 @@ export class ManagementService {
             ]),
           );
           expected(old, input.expectedVersion);
+          if (old.sale_price !== null && input.price <= old.sale_price)
+            fail('INVALID_DISCOUNT', 'Hãy tắt hoặc cập nhật giá giảm trước khi đổi giá gốc.', 422);
           const updated = await one(
             tx,
             'UPDATE store_skus SET price=$3,active=$4,version=version+1,updated_at=now() WHERE store_id=$1 AND sku_id=$2 RETURNING *',

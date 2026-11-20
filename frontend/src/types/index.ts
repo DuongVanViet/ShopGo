@@ -21,12 +21,17 @@ export interface Product {
   description: string;
   categoryId: string | null;
   price: number;
+  originalPrice?: number;
   available: number;
   version: number;
+  expiresOn?: string | null;
   imageUrl?: string | null;
   store?: Store;
 }
 export interface ManagedProduct {
+  salePrice?: number | null;
+  saleStartsAt?: string | null;
+  saleEndsAt?: string | null;
   id: string;
   productId: string;
   skuId: string;
@@ -43,6 +48,7 @@ export interface ManagedProduct {
   available: number;
   active: boolean;
   version: number;
+  expiresOn?: string | null;
   imageUrl?: string | null;
 }
 export interface StaffAccount {
@@ -73,12 +79,15 @@ export interface User {
   memberships: { storeId: string; role: Role }[];
 }
 export interface CartItem {
+  originalPrice?: number;
   skuId: string;
   name: string;
   code: string;
+  unit: string;
   price: number;
   quantity: number;
   available: number;
+  imageUrl?: string | null;
 }
 export interface Cart {
   id: string;
@@ -132,6 +141,7 @@ export type OrderStatus =
   | 'CANCELLED'
   | 'EXPIRED';
 export interface OrderItem {
+  originalUnitPrice?: number | null;
   id: string;
   skuId: string;
   skuCode: string;
@@ -143,6 +153,7 @@ export interface OrderItem {
   barcode: string | null;
 }
 export interface Order {
+  voucherCode?: string | null;
   id: string;
   code: string;
   storeId: string;

@@ -16,11 +16,12 @@ Tất cả đường dẫn dưới đây theo prefix `/api/v1`. Public chỉ đ�
 | POST /auth/logout | Có phiên | Session | Thu hồi refresh session, xóa cookie |
 | GET /me | Có phiên | — | Hồ sơ và membership được phép |
 | GET /stores | Public | query, lat/lng tùy chọn, cursor | Cửa hàng hoạt động và giờ mở |
-| GET /stores/{storeId}/products | Public | q, categoryId, inStock, cursor | Giá/tồn theo store, thời điểm cập nhật |
+| GET /products | Public | q, categoryId, inStock, cursor | Tìm offer từ mọi cửa hàng; trả kèm store, giá và tồn riêng của từng nơi; `q` tìm theo tên, SKU, barcode, mô tả, danh mục và tên cửa hàng |
+| GET /stores/{storeId}/products | Public | q, categoryId, inStock, cursor | Tìm trong một cửa hàng theo tên, SKU, barcode, mô tả hoặc danh mục; trả giá/tồn tại store và thời điểm cập nhật |
 | GET /stores/{storeId}/categories | Public | — | Chỉ danh mục có SKU active tại store |
 | GET /stores/{storeId}/products/{skuId} | Public | — | Chi tiết SKU và available |
 | GET /stores/{storeId}/slots | Public | date, method=PICKUP | Slot còn nhận đơn, sức chứa khả dụng |
-| GET /cart | Khách | storeId | Giỏ và version |
+| GET /cart | Khách | storeId | Giỏ và version; mỗi dòng trả `unit` và `imageUrl` ảnh chính giống catalog để frontend hiển thị nhất quán |
 | PUT /cart/items/{skuId} | Khách | storeId, quantity, expectedVersion | Upsert số lượng; không giữ tồn |
 | DELETE /cart/items/{skuId} | Khách | storeId, expectedVersion | Xóa dòng và tăng version |
 | POST /cart/switch-store | Khách | targetStoreId, expectedVersion, confirm | Preview chênh lệch khi confirm=false; chỉ đổi khi xác nhận |
@@ -54,11 +55,13 @@ Các path có storeId đều kiểm tra membership; orderId phải thực sự t
 | GET /stores/{storeId}/catalog/categories | Manager | Danh mục chung và danh mục thuộc store |
 | POST /stores/{storeId}/catalog/categories | Manager | name, slug?; tạo danh mục riêng, idempotent |
 | GET /stores/{storeId}/catalog/products | Manager | Chi tiết product/SKU/category/giá/tồn theo store |
-| POST /stores/{storeId}/catalog/products | Manager | categoryId, tên/mô tả, SKU/barcode/unit, giá, tồn ban đầu; nguyên tử và idempotent |
+| POST /stores/{storeId}/catalog/products | Manager | categoryId, tên/mô tả, SKU/barcode/unit, giá, tồn ban đầu, hạn gần nhất tùy chọn; nguyên tử và idempotent |
+| PATCH /stores/{storeId}/catalog/products/{skuId} | Manager | Sửa tên, mô tả, danh mục, SKU/barcode/unit, giá, trạng thái bán, `expiresOn`; dùng `expectedVersion`, idempotency và audit |
 | POST /stores/{storeId}/catalog/products/{productId}/image | Manager | multipart field `image`; JPEG/PNG/WebP tối đa 5 MB; tải mới hoặc thay ảnh chính |
 | GET /stores/{storeId}/staff | Manager/Admin | Danh sách tài khoản nhân viên và vai trò của đúng cửa hàng; không trả password/hash |
 | POST /stores/{storeId}/staff | Manager/Admin | displayName, phone/email, password ban đầu, role; MANAGER chỉ cấp PICKER/COUNTER, admin hệ thống được cấp thêm MANAGER; idempotent |
 | POST /stores/{storeId}/inventory/adjustments | Manager | skuId, delta, reason, expectedVersion; không dưới reserved |
+| POST /stores/{storeId}/inventory/{skuId}/write-offs | Manager | Loại một phần hàng khỏi tồn bằng `quantity`, lý do `EXPIRED`/`DAMAGED` và ghi chú tùy chọn; idempotent, audit đầy đủ, không được trừ vào lượng đang giữ cho đơn |
 | PUT /stores/{storeId}/products/{skuId} | Manager | price, active, expectedVersion; thay giá chỉ tác động quote mới |
 | POST /stores/{storeId}/slots | Manager | startsAt, endsAt, capacity; không trùng policy slot |
 | PATCH /stores/{storeId}/slots/{id} | Manager | capacity, expectedVersion; không thấp hơn allocatedCount |

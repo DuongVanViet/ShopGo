@@ -11,11 +11,11 @@ Backend NestJS + TypeScript + PostgreSQL theo đặc tả trong `docs`. Đây l�
 | Catalog | Discovery sản phẩm trên mọi cửa hàng; danh mục/SKU, tìm chữ có/không dấu, giá và available theo store; cursor UUID hoặc cursor ghép store–SKU |
 | Cart | Giỏ một user/store, sửa số lượng theo version, đổi store qua preview, quote có hạn và giá server |
 | Checkout | Giữ tồn, slot, voucher, snapshot đơn và outbox trong một transaction; khóa idempotency + payload hash; retry serialization/deadlock |
-| Orders | Ownership, timeline, hủy trước soạn, giải phóng tồn/slot/quota, nghĩa vụ hoàn tiền khi cần |
+| Orders | Ownership, timeline, cọc 15% hoặc thanh toán đủ online, hủy trước soạn, giải phóng tồn/slot/quota, nghĩa vụ hoàn tiền khi cần |
 | Fulfillment | Claim/reassign, quét SKU, báo thiếu/hỏng, READY, QR hash dùng một lần/cấp lại, CASH collection và handover nguyên tử |
 | Payment | **Simulator local**: attempt, HMAC webhook, inbox chống trùng, xử lý đến muộn, refund request và xác nhận refund sandbox |
 | Quản trị | Seller tự tạo danh mục/sản phẩm và cấp tài khoản nhân viên trong đúng store; admin truy cập vận hành/cấp Manager; chỉnh giá, tồn và sức chứa slot; audit và báo cáo tiền riêng doanh thu đơn hoàn tất |
-| Worker | Thu hồi đơn online hết hạn từ DB, materialize outbox thành thông báo IN_APP có dedup; nhiều worker dùng SKIP LOCKED |
+| Worker | Thu hồi đơn chưa hoàn tất khoản thanh toán ban đầu hết hạn từ DB, materialize outbox thành thông báo IN_APP có dedup; nhiều worker dùng SKIP LOCKED |
 | Hỗ trợ/AI | Ticket/thông báo cá nhân, conversation có ownership; AI Gateway có timeout/kiểm chứng SKU/nguồn; proposal giỏ có xác nhận, giá/tồn/version và chống apply trùng; recommendation baseline |
 | HTTP | `/api/v1`, validation Zod strict, requestId, lỗi có code, envelope camelCase, CORS allowlist, Helmet, Swagger non-production |
 
@@ -86,6 +86,7 @@ Seller đăng ký được cấp `MANAGER` cho đúng cửa hàng của mình. M
 | POST `/stores/{storeId}/catalog/categories` | Tạo danh mục store; backend tự sinh slug nếu không gửi |
 | GET `/stores/{storeId}/catalog/products` | Danh sách chi tiết sản phẩm seller đang quản lý |
 | POST `/stores/{storeId}/catalog/products` | Tạo product, SKU, giá, tồn và movement trong một transaction |
+| PATCH `/stores/{storeId}/catalog/products/{skuId}` | Manager sửa thuộc tính, giá, trạng thái bán và hạn gần nhất; có optimistic version, idempotency và audit |
 | POST `/stores/{storeId}/catalog/products/{productId}/image` | Tải hoặc thay ảnh chính JPEG/PNG/WebP, tối đa 5 MB; cần MANAGER của store |
 | GET `/products` | Public discovery các offer đang mở bán của mọi cửa hàng; mỗi item kèm `store` và cursor ghép store–SKU |
 | GET `/stores/{storeId}/products` | Catalog public chỉ của một cửa hàng, dùng sau khi khách chọn/vào cửa hàng |
@@ -165,6 +166,8 @@ Sau khi khách chọn cửa hàng, dùng `GET /stores/{storeId}/products` và `G
 
 Quote không reserve. Giá/tồn/slot/quota và cart version được kiểm tra lại lúc đặt. Chiết khấu MVP ở mức đơn, order item lineTotal lưu giá trước giảm voucher. Một SKU tối đa 1.000 đơn vị, tổng đơn tối đa 1.000.000.000.000 VND; backend chỉ hỗ trợ SKU đếm nguyên.
 
+Quote trả `paymentOptions` do server tính. `PAY_AT_PICKUP` tương ứng `DEPOSIT_15`: trả trước 15% được làm tròn lên đến đồng, phần còn lại trả tại quầy. `ONLINE` tương ứng `FULL_ONLINE`: trả 100% online. Client chỉ chọn `paymentMethod`, không được gửi số tiền hay tỷ lệ cọc.
+
 ### 3. Checkout
 
 `POST /orders` với header `Idempotency-Key` ngẫu nhiên 8–128 ký tự:
@@ -175,13 +178,15 @@ Quote không reserve. Giá/tồn/slot/quota và cart version được kiểm tra
 
 Lưu orderId/version/itemIds từ response. Gửi lại cùng key và body trả cùng kết quả. Cùng key nhưng khác body bị từ chối. Không đổi key sau timeout khi chưa biết giao dịch cũ có thành công không.
 
+Với đơn có tổng lớn hơn 0, cả hai lựa chọn đều tạo `PENDING_PAYMENT`. Tạo payment attempt và hoàn tất khoản `amountDueNow` trước hạn mới chuyển đơn sang `CONFIRMED`; với `DEPOSIT_15`, payment summary lúc này là `PARTIALLY_PAID`.
+
 ### 4. Soạn
 
 Login picker, gọi lần lượt và dùng version mới sau mỗi bước, header idempotency key riêng cho mỗi hành động:
 
-- `POST /stores/{storeId}/orders/{id}/claim`: `{ "expectedVersion": 1 }`.
-- `PUT /stores/{storeId}/orders/{id}/picking-items/{itemId}`: `{ "barcode": "<barcode SKU>", "pickedQuantity": 1, "expectedVersion": 2 }`.
-- `POST /stores/{storeId}/orders/{id}/ready`: `{ "expectedVersion": 3 }` sau khi đủ mọi dòng.
+- `POST /stores/{storeId}/orders/{id}/claim`: gửi `expectedVersion` mới nhất của đơn đã xác nhận.
+- `PUT /stores/{storeId}/orders/{id}/picking-items/{itemId}`: gửi barcode, số lượng và version vừa nhận ở bước trước.
+- `POST /stores/{storeId}/orders/{id}/ready`: gửi version mới nhất sau khi đã soạn đủ mọi dòng.
 
 Thiếu/hỏng báo `/issues`; manager có thể reassign hoặc hủy có xác nhận restock. Không tự thay hàng hoặc tăng tiền đơn đã chốt.
 
@@ -195,11 +200,11 @@ Khách lấy `GET /orders/{id}/pickup-token`, response có Cache-Control no-stor
 { "amount": 10000, "method": "CASH", "shiftReference": "CA-001", "expectedVersion": 4 }
 ```
 
-Phải gửi đúng total server. Sau đó `/handover` với `{ "token": "<QR token>", "expectedVersion": 5 }`. Cả hai thao tác cần Idempotency-Key. Handover mới trừ onHand/reserved và dùng QR; slot FULFILLED vẫn chiếm capacity phục vụ ban đầu. Bấm lại không thu/trừ tồn lần nữa.
+Phải gửi đúng `amountRemaining` server trả về: thường là 85% còn lại của đơn cọc; đơn `FULL_ONLINE` không tạo collection. Sau đó `/handover` với token và version mới nhất. Cả hai thao tác cần Idempotency-Key. Backend chặn thu khi chưa đủ cọc, thu sai số tiền hoặc thu lần hai. Handover mới trừ onHand/reserved và dùng QR; slot FULFILLED vẫn chiếm capacity phục vụ ban đầu.
 
 ## Thanh toán sandbox
 
-Đặt `PAYMENT_MODE=sandbox` và secret ngẫu nhiên `PAYMENT_WEBHOOK_SECRET` trong env, khởi động lại API. `POST /orders` có paymentMethod ONLINE tạo PENDING_PAYMENT; `POST /orders/{id}/payment-attempts` với expectedVersion và idempotency key tạo reference. Không có trang thu tiền thật.
+Đặt `PAYMENT_MODE=sandbox` và secret ngẫu nhiên `PAYMENT_WEBHOOK_SECRET` trong env, khởi động lại API. Cả `ONLINE` và `PAY_AT_PICKUP` với tổng lớn hơn 0 đều tạo `PENDING_PAYMENT`; attempt thu lần lượt 100% hoặc khoản cọc 15% đã snapshot. `POST /orders/{id}/payment-attempts` với expectedVersion và idempotency key tạo reference. Không có trang thu tiền thật.
 
 Webhook `POST /webhooks/payments/sandbox` có body:
 
@@ -214,7 +219,7 @@ Webhook `POST /webhooks/payments/sandbox` có body:
 }
 ```
 
-Header `X-Webhook-Timestamp` là Unix seconds, lệch tối đa 300 giây. `X-Webhook-Signature` là HMAC-SHA256 hex của chuỗi `timestamp + '.' + rawJSON` bằng PAYMENT_WEBHOOK_SECRET. Phải ký đúng bytes đã gửi; ví dụ ký/gửi nằm trong test tích hợp. Callback đến muộn tạo refund REQUESTED, không hồi sinh đơn. Simulator `confirm-sandbox` chỉ đánh dấu hoàn giả để thử quy trình; không chứng minh đã hoàn tiền thật.
+Header `X-Webhook-Timestamp` là Unix seconds, lệch tối đa 300 giây. `X-Webhook-Signature` là HMAC-SHA256 hex của chuỗi `timestamp + '.' + rawJSON` bằng PAYMENT_WEBHOOK_SECRET. Phải ký đúng bytes đã gửi; backend đối chiếu cả attempt và `amountDueNow` của đơn. Callback đến muộn tạo refund REQUESTED, không hồi sinh đơn. UI local dùng `POST /orders/{id}/payment-attempts/{attemptId}/confirm-sandbox` để mô phỏng người chủ đơn trả tiền; endpoint bị cấm trong production. Simulator refund riêng chỉ đánh dấu hoàn giả để thử quy trình, không chứng minh đã hoàn tiền thật.
 
 ## Các quy ước thao tác
 

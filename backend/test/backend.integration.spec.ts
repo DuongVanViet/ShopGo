@@ -259,10 +259,273 @@ describe('ShopGo PostgreSQL integration', () => {
     const r = await request(app.getHttpServer()).get('/api/v1/health/ready').expect(200);
     assert.strictEqual(r.body.data.status, 'ready');
     assert.strictEqual(r.headers['x-request-id'], r.body.meta.requestId);
+    const removed = await db.pool.query(
+      'DELETE FROM schema_migrations WHERE version=$1 RETURNING version, checksum',
+      ['012_product_discounts.sql'],
+    );
+    assert.equal(removed.rowCount, 1);
+    try {
+      const response = await request(app.getHttpServer()).get('/api/v1/health/ready').expect(503);
+      assert.equal(response.body.error.code, 'NOT_READY');
+    } finally {
+      const { version, checksum } = removed.rows[0];
+      await db.pool.query('INSERT INTO schema_migrations(version,checksum) VALUES ($1,$2)', [
+        version,
+        checksum,
+      ]);
+    }
   });
   it('requires authentication and rejects invalid DTO fields', async () => {
     await request(app.getHttpServer()).get('/api/v1/orders').expect(401);
     await api().post('/orders').send({ quoteId: 'bad', total: 1 }).expect(400);
+  });
+  it('prices store discounts consistently, keeps historical prices and rejects an expired sale quote', async () => {
+    const category = (
+      await api('manager')
+        .post(`/stores/${ids.store}/catalog/categories`)
+        .set('Idempotency-Key', key())
+        .send({ name: 'Giảm trực tiếp' })
+        .expect(201)
+    ).body.data;
+    const product = (
+      await api('manager')
+        .post(`/stores/${ids.store}/catalog/products`)
+        .set('Idempotency-Key', key())
+        .send({
+          name: 'Sữa gần hạn',
+          categoryId: category.id,
+          sku: { code: 'SALE-MILK', name: 'Sữa gần hạn', unit: 'box' },
+          price: 35000,
+          initialStock: 10,
+        })
+        .expect(201)
+    ).body.data;
+    const path = `/stores/${ids.store}/catalog/products/${product.skuId}`;
+    const body = {
+      name: product.name,
+      description: '',
+      categoryId: category.id,
+      sku: { code: product.code, name: product.name, barcode: null, unit: 'box' },
+      price: 35000,
+      active: true,
+      expiresOn: null,
+      expectedVersion: 1,
+      discount: {
+        price: 25000,
+        startsAt: new Date(Date.now() - 60000).toISOString(),
+        endsAt: new Date(Date.now() + 86400000).toISOString(),
+      },
+    };
+    await api('picker').patch(path).set('Idempotency-Key', key()).send(body).expect(403);
+    await api('manager')
+      .patch(path)
+      .set('Idempotency-Key', key())
+      .send({ ...body, discount: { ...body.discount, price: 35000 } })
+      .expect(422);
+    await api('manager').patch(path).set('Idempotency-Key', key()).send(body).expect(200);
+    const offer = (
+      await api().get(`/stores/${ids.store}/products?limit=100`).expect(200)
+    ).body.data.items.find((p: any) => p.id === product.skuId);
+    assert.equal(offer.price, 25000);
+    assert.equal(offer.originalPrice, 35000);
+    const global = (await api().get('/products?q=SALE-MILK').expect(200)).body.data.items[0];
+    assert.equal(global.price, 25000);
+    assert.equal(global.originalPrice, 35000);
+    await api().put(`/me/favorites/${ids.store}/${product.skuId}`).expect(200);
+    assert.equal((await api().get('/me/favorites').expect(200)).body.data[0].price, 25000);
+    let cart = (await api().get(`/cart?storeId=${ids.store}`).expect(200)).body.data;
+    cart = (
+      await api()
+        .put(`/cart/items/${product.skuId}`)
+        .send({ storeId: ids.store, expectedVersion: cart.version, quantity: 2 })
+        .expect(200)
+    ).body.data;
+    assert.equal(cart.items[0].price, 25000);
+    assert.equal(cart.items[0].originalPrice, 35000);
+    await db.pool.query(
+      "INSERT INTO vouchers(code,discount_type,value,quota,valid_from,valid_until) VALUES('SALEPLUS','PERCENT',10,10,now()-interval '1 day',now()+interval '1 day')",
+    );
+    const preview = (await api().get(`/cart/vouchers?storeId=${ids.store}`).expect(200)).body.data;
+    assert.equal(preview.subtotal, 50000);
+    assert.equal(preview.recommended.discountAmount, 5000);
+    const q = (
+      await api()
+        .post('/checkout/quotes')
+        .send({
+          cartId: cart.id,
+          cartVersion: cart.version,
+          slotId: ids.slot,
+          voucherCode: 'SALEPLUS',
+        })
+        .expect(201)
+    ).body.data;
+    const payload = {
+      quoteId: q.id,
+      paymentMethod: 'PAY_AT_PICKUP',
+      expectedCartVersion: cart.version,
+    };
+    const created = (
+      await api().post('/orders').set('Idempotency-Key', key()).send(payload).expect(201)
+    ).body.data;
+    assert.equal(created.total, 45000);
+    assert.equal(created.amountDueNow, 6750);
+    assert.equal(created.items[0].unitPrice, 25000);
+    assert.equal(created.items[0].originalUnitPrice, 35000);
+    cart = (await api().get(`/cart?storeId=${ids.store}`).expect(200)).body.data;
+    cart = (
+      await api()
+        .put(`/cart/items/${product.skuId}`)
+        .send({ storeId: ids.store, expectedVersion: cart.version, quantity: 1 })
+        .expect(200)
+    ).body.data;
+    const stale = (
+      await api()
+        .post('/checkout/quotes')
+        .send({ cartId: cart.id, cartVersion: cart.version, slotId: ids.slot })
+        .expect(201)
+    ).body.data;
+    await db.pool.query(
+      "UPDATE store_skus SET sale_starts_at=now()-interval '2 hours',sale_ends_at=now()-interval '1 hour' WHERE store_id=$1 AND sku_id=$2",
+      [ids.store, product.skuId],
+    );
+    await api()
+      .post('/orders')
+      .set('Idempotency-Key', key())
+      .send({ quoteId: stale.id, paymentMethod: 'ONLINE', expectedCartVersion: cart.version })
+      .expect(409);
+    assert.equal(
+      (await api().get(`/cart?storeId=${ids.store}`).expect(200)).body.data.items[0].price,
+      35000,
+    );
+    assert.equal(
+      (await api().get(`/orders/${created.id}`).expect(200)).body.data.items[0].unitPrice,
+      25000,
+    );
+    await api('manager')
+      .patch(path)
+      .set('Idempotency-Key', key())
+      .send({ ...body, expectedVersion: 2, discount: null })
+      .expect(200);
+    assert.equal(
+      (
+        await api('manager').get(`/stores/${ids.store}/catalog/products?limit=100`).expect(200)
+      ).body.data.items.find((p: any) => p.skuId === product.skuId).salePrice,
+      null,
+    );
+  });
+  it('manages store vouchers with scope, replay protection and pause before checkout', async () => {
+    const path = `/stores/${ids.store}/promotions`;
+    const payload = {
+      code: 'RAUXANH10',
+      discountType: 'PERCENT',
+      value: 10,
+      minTotal: 200000,
+      maxDiscount: 30000,
+      quota: 100,
+      validFrom: new Date(Date.now() - 60000).toISOString(),
+      validUntil: new Date(Date.now() + 86400000).toISOString(),
+    };
+    await api('picker').post(path).set('Idempotency-Key', key()).send(payload).expect(403);
+    await api('manager')
+      .post(`/stores/${ids.otherStore}/promotions`)
+      .set('Idempotency-Key', key())
+      .send(payload)
+      .expect(403);
+    const replay = key();
+    const voucher = (
+      await api('manager').post(path).set('Idempotency-Key', replay).send(payload).expect(201)
+    ).body.data;
+    assert.equal(
+      (await api('manager').post(path).set('Idempotency-Key', replay).send(payload).expect(201))
+        .body.data.id,
+      voucher.id,
+    );
+    await api('manager')
+      .post(path)
+      .set('Idempotency-Key', key())
+      .send({ ...payload, code: 'BAD', value: 101 })
+      .expect(400);
+    await api('customer').get(path).expect(403);
+    assert.equal((await api('manager').get(path).expect(200)).body.data.items.length, 1);
+    await db.pool.query('UPDATE store_skus SET price=250000 WHERE sku_id=$1', [ids.sku]);
+    const q = await quote('customer', payload.code);
+    const preview = (await api().get(`/cart/vouchers?storeId=${ids.store}`).expect(200)).body.data;
+    assert.equal(preview.recommended.code, payload.code);
+    assert.equal(preview.recommended.discountAmount, 25000);
+    assert.equal(
+      (await api('other').get(`/cart/vouchers?storeId=${ids.store}`).expect(200)).body.data
+        .subtotal,
+      0,
+    );
+    await api('manager')
+      .patch(`${path}/${voucher.id}`)
+      .set('Idempotency-Key', key())
+      .send({ active: false, expectedVersion: 1 })
+      .expect(200);
+    await api().post('/orders').set('Idempotency-Key', key()).send(q).expect(422);
+    assert.equal((await one(db.pool, 'SELECT count(*)::int AS count FROM orders'))!.count, 0);
+    assert.equal(
+      (await api().get(`/cart/vouchers?storeId=${ids.store}&code=rauxanh10`).expect(200)).body.data
+        .items[0].reason,
+      'PAUSED',
+    );
+    assert.equal(
+      (await request(app.getHttpServer()).get(`/api/v1/stores/${ids.store}/vouchers`).expect(200))
+        .body.data.items.length,
+      0,
+    );
+    await api('manager')
+      .patch(`${path}/${voucher.id}`)
+      .set('Idempotency-Key', key())
+      .send({ active: true, expectedVersion: 1 })
+      .expect(409);
+  });
+  it('previews minimum spend, recommends the best voucher, snapshots discounted deposit and releases quota on expiry', async () => {
+    const path = `/stores/${ids.store}/promotions`;
+    const payload = {
+      code: 'RAUXANH10',
+      discountType: 'PERCENT',
+      value: 10,
+      minTotal: 200000,
+      maxDiscount: 30000,
+      quota: 1,
+      validFrom: new Date(Date.now() - 60000).toISOString(),
+      validUntil: new Date(Date.now() + 86400000).toISOString(),
+    };
+    await api('manager').post(path).set('Idempotency-Key', key()).send(payload).expect(201);
+    await quote();
+    await db.pool.query('UPDATE store_skus SET price=180000 WHERE sku_id=$1', [ids.sku]);
+    const low = (await api().get(`/cart/vouchers?storeId=${ids.store}`).expect(200)).body.data;
+    assert.equal(low.items[0].missingAmount, 20000);
+    assert.equal(low.items[0].eligible, false);
+    assert.equal(low.recommended, null);
+    await db.pool.query('UPDATE store_skus SET price=250000 WHERE sku_id=$1', [ids.sku]);
+    const q = await quote('customer', payload.code);
+    const created = (await api().post('/orders').set('Idempotency-Key', key()).send(q).expect(201))
+      .body.data;
+    assert.equal(created.voucherCode, payload.code);
+    assert.equal(created.discount, 25000);
+    assert.equal(created.total, 225000);
+    assert.equal(created.amountDueNow, 33750);
+    assert.equal(created.remainingAmount, 191250);
+    assert.equal(
+      (
+        await api('other')
+          .get(`/cart/vouchers?storeId=${ids.store}&code=${payload.code}`)
+          .expect(200)
+      ).body.data.items[0].reason,
+      'EXHAUSTED',
+    );
+    await db.pool.query("UPDATE orders SET expires_at=now()-interval '1 second' WHERE id=$1", [
+      created.id,
+    ]);
+    await app.get(JobsService).expire();
+    await app.get(JobsService).expire();
+    assert.equal((await one(db.pool, 'SELECT allocated_count FROM vouchers'))!.allocated_count, 0);
+    assert.equal(
+      (await one(db.pool, 'SELECT status FROM voucher_redemptions'))!.status,
+      'RELEASED',
+    );
   });
   it('updates the authenticated profile while preserving roles and contact uniqueness', async () => {
     await request(app.getHttpServer())
@@ -431,6 +694,86 @@ describe('ShopGo PostgreSQL integration', () => {
       .send({ phone: '+84988888888' })
       .expect(429);
   });
+  it('finds stores by name or address, opens them beyond the first page, and pages nearby results', async () => {
+    const storeId = (index: number) => `00000000-1111-4000-a000-${String(index).padStart(12, '0')}`;
+    await db.pool.query(
+      `INSERT INTO stores(id,code,name,address,latitude,longitude,status)
+       SELECT ('00000000-1111-4000-a000-'||lpad(n::text,12,'0'))::uuid,
+       'PICKUP-'||n, 'Điểm nhận '||n, 'Hà Đông, Hà Nội',
+       CASE WHEN n<>104 THEN 21.0 END,
+       CASE WHEN n<>104 THEN 105.8 + CASE WHEN n>=101 THEN 0 ELSE n/10000.0 END END,
+       CASE WHEN n=103 THEN 'PAUSED' ELSE 'ACTIVE' END
+       FROM generate_series(1,104) n`,
+    );
+    const get = (path: string) => request(app.getHttpServer()).get(`/api/v1/stores${path}`);
+    const page = (await get('?q=ha%20dong&limit=10').expect(200)).body.data;
+    assert.strictEqual(page.items.length, 10);
+    assert.strictEqual(page.nextCursor, storeId(10));
+    const next = (await get(`?q=ha%20dong&limit=10&cursor=${page.nextCursor}`).expect(200)).body
+      .data;
+    assert.strictEqual(next.items[0].id, storeId(11));
+    assert.strictEqual((await get('/' + storeId(102)).expect(200)).body.data.id, storeId(102));
+    await get('/' + storeId(103)).expect(404);
+    const nameSearch = (await get('?q=diem%20nhan%20102').expect(200)).body.data;
+    assert.deepStrictEqual(
+      nameSearch.items.map((store: { id: string }) => store.id),
+      [storeId(102)],
+    );
+    const nearbyPath = '?lat=21&lng=105.8&q=ha%20dong&limit=1';
+    const nearby = (await get(nearbyPath).expect(200)).body.data;
+    assert.strictEqual(nearby.items[0].id, storeId(101));
+    assert.strictEqual(nearby.items[0].distanceMeters, 0);
+    const secondNearby = (
+      await get(`${nearbyPath}&cursor=${encodeURIComponent(nearby.nextCursor)}`).expect(200)
+    ).body.data;
+    assert.strictEqual(secondNearby.items[0].id, storeId(102));
+    const thirdNearby = (
+      await get(`${nearbyPath}&cursor=${encodeURIComponent(secondNearby.nextCursor)}`).expect(200)
+    ).body.data;
+    assert.strictEqual(thirdNearby.items[0].id, storeId(1));
+    assert.ok(thirdNearby.items[0].distanceMeters > 0);
+    await get('?lat=21').expect(400);
+    await get('?lat=91&lng=105').expect(400);
+    await get(`?lat=21&lng=105&cursor=${page.nextCursor}`).expect(400);
+  });
+  it('keeps favorite offers private, distinct by store, and removable after delisting', async () => {
+    await db.pool.query('INSERT INTO store_skus(store_id,sku_id,price) VALUES($1,$2,12500)', [
+      ids.otherStore,
+      ids.sku,
+    ]);
+    const list = '/me/favorites';
+    const first = `${list}/${ids.store}/${ids.sku}`;
+    const second = `${list}/${ids.otherStore}/${ids.sku}`;
+    await request(app.getHttpServer()).get(`/api/v1${list}`).expect(401);
+    await api('manager').put(first).expect(403);
+    await api().put(`${list}/${ids.store}/${randomUUID()}`).expect(404);
+    await api().put(first).expect(200);
+    await api().put(first).expect(200);
+    await api().put(second).expect(200);
+    assert.deepStrictEqual((await api('other').get(list).expect(200)).body.data, []);
+    await request(app.getHttpServer())
+      .delete(`/api/v1${first}`)
+      .auth(tokens.other, { type: 'bearer' })
+      .expect(200);
+
+    const saved = (await api().get(list).expect('Cache-Control', 'private, no-store').expect(200))
+      .body.data;
+    assert.strictEqual(saved.length, 2);
+    assert.strictEqual(saved.find((item: any) => item.store.id === ids.otherStore).price, 12500);
+    await db.pool.query('UPDATE store_skus SET active=false WHERE store_id=$1', [ids.store]);
+    const afterPause = (await api().get(list).expect(200)).body.data;
+    assert.strictEqual(afterPause.find((item: any) => item.store.id === ids.store).sellable, false);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await request(app.getHttpServer())
+        .delete(`/api/v1${first}`)
+        .auth(tokens.customer, { type: 'bearer' })
+        .expect(200);
+    }
+    assert.deepStrictEqual(
+      (await api().get(list).expect(200)).body.data.map((item: any) => item.store.id),
+      [ids.otherStore],
+    );
+  });
   it('returns store-scoped products and accent-insensitive search', async () => {
     const r = await request(app.getHttpServer())
       .get(`/api/v1/stores/${ids.store}/products?q=ca%20rot`)
@@ -464,6 +807,9 @@ describe('ShopGo PostgreSQL integration', () => {
       await tx.query('INSERT INTO inventory_balances(store_id,sku_id,on_hand) VALUES($1,$2,4)', [
         ids.otherStore,
         ids.sku,
+      ]);
+      await tx.query("UPDATE products SET description='Rau củ tươi từ Đà Lạt' WHERE id=$1", [
+        ids.product,
       ]);
     });
 
@@ -501,6 +847,15 @@ describe('ShopGo PostgreSQL integration', () => {
       latitude: 10.8,
       longitude: 106.71,
     });
+    const descriptionSearch = await request(app.getHttpServer())
+      .get('/api/v1/products?q=rau%20cu%20tuoi')
+      .expect(200);
+    assert.strictEqual(descriptionSearch.body.data.items.length, 2);
+    const storeNameSearch = await request(app.getHttpServer())
+      .get('/api/v1/products?q=ven%20song')
+      .expect(200);
+    assert.strictEqual(storeNameSearch.body.data.items.length, 1);
+    assert.strictEqual(storeNameSearch.body.data.items[0].store.id, ids.otherStore);
   });
   it('checkout reserves, snapshots and consumes quote once', async () => {
     const payload = await quote(),
@@ -635,6 +990,20 @@ describe('ShopGo PostgreSQL integration', () => {
       0,
     );
   });
+  it('tracks a full deposit refund when the customer cancels after paying', async () => {
+    const o = await order();
+    const cancelled = (
+      await api()
+        .post(`/orders/${o.id}/cancel`)
+        .set('Idempotency-Key', key())
+        .send({ expectedVersion: o.version, reason: 'Khách đổi kế hoạch' })
+        .expect(201)
+    ).body.data;
+    assert.strictEqual(cancelled.status, 'CANCELLED');
+    assert.strictEqual(cancelled.paymentStatus, 'REFUND_PENDING');
+    assert.strictEqual(cancelled.refunds.length, 1);
+    assert.strictEqual(cancelled.refunds[0].amount, o.depositAmount);
+  });
   it('rejects changed prices and expired quote before reserving', async () => {
     const payload = await quote();
     await db.pool.query('UPDATE store_skus SET price=12000,version=version+1');
@@ -710,12 +1079,12 @@ describe('ShopGo PostgreSQL integration', () => {
     await api('picker')
       .post(`/stores/${ids.otherStore}/orders/${o.id}/claim`)
       .set('Idempotency-Key', key())
-      .send({ expectedVersion: 1 })
+      .send({ expectedVersion: o.version })
       .expect(403);
     await api('manager')
       .post(`/stores/${ids.store}/orders/${o.id}/claim`)
       .set('Idempotency-Key', key())
-      .send({ expectedVersion: 1 })
+      .send({ expectedVersion: o.version })
       .expect(201);
   });
   it('blocks READY for incomplete picking and wrong barcode', async () => {
@@ -724,7 +1093,7 @@ describe('ShopGo PostgreSQL integration', () => {
       await api('picker')
         .post(`/stores/${ids.store}/orders/${o.id}/claim`)
         .set('Idempotency-Key', key())
-        .send({ expectedVersion: 1 })
+        .send({ expectedVersion: o.version })
         .expect(201)
     ).body.data;
     await api('picker')
@@ -894,6 +1263,26 @@ describe('ShopGo PostgreSQL integration', () => {
     assert.strictEqual(
       (await one(db.pool, 'SELECT status FROM orders'))!.status,
       'PENDING_PAYMENT',
+    );
+  });
+  it('rejects a signed webhook when the stored attempt no longer matches the order amount due', async () => {
+    const o = await order('customer', true),
+      w = await sandbox(o),
+      payload = JSON.parse(w.body);
+    payload.amount--;
+    await db.pool.query('UPDATE payment_attempts SET amount=$2 WHERE id=$1', [
+      w.attempt.id,
+      payload.amount,
+    ]);
+    const response = await webhook(JSON.stringify(payload), w.timestamp).expect(422);
+    assert.strictEqual(response.body.error.code, 'PAYMENT_AMOUNT_MISMATCH');
+    assert.strictEqual(
+      (await one(db.pool, 'SELECT status FROM orders'))!.status,
+      'PENDING_PAYMENT',
+    );
+    assert.strictEqual(
+      (await one(db.pool, 'SELECT status FROM payment_attempts'))!.status,
+      'PENDING',
     );
   });
   it('late payment expires order and creates a tracked refund, never revives', async () => {
@@ -1362,7 +1751,12 @@ describe('ShopGo PostgreSQL integration', () => {
       name: 'Táo xanh 500g',
       description: 'Táo giòn, đóng gói 500 gram.',
       categoryId: category.id,
-      sku: { code: 'tao-xanh-500', barcode: '8930000000001', name: 'Táo xanh 500g', unit: 'pack' },
+      sku: {
+        code: 'tao-xanh-500',
+        barcode: '8930000000001',
+        name: 'Táo xanh 500g',
+        unit: 'multipack',
+      },
       price: 45000,
       initialStock: 12,
     };
@@ -1375,6 +1769,7 @@ describe('ShopGo PostgreSQL integration', () => {
         .expect(201)
     ).body.data;
     assert.strictEqual(product.code, 'TAO-XANH-500');
+    assert.strictEqual(product.unit, 'multipack');
     assert.strictEqual(product.categoryId, category.id);
     assert.strictEqual(product.onHand, 12);
     assert.strictEqual(
@@ -1403,6 +1798,55 @@ describe('ShopGo PostgreSQL integration', () => {
       'Trái cây tươi',
     );
     assert.strictEqual(managed.find((item: any) => item.skuId === product.skuId).imageUrl, null);
+
+    const writeOffPayload = {
+      quantity: 3,
+      reason: 'EXPIRED',
+      note: 'Ba lốc trong lô đã hết hạn.',
+    };
+    const writeOffKey = key();
+    const writtenOff = (
+      await api('manager')
+        .post(`/stores/${ids.store}/inventory/${product.skuId}/write-offs`)
+        .set('Idempotency-Key', writeOffKey)
+        .send(writeOffPayload)
+        .expect(201)
+    ).body.data;
+    assert.strictEqual(writtenOff.onHand, 9);
+    assert.strictEqual(writtenOff.available, 9);
+    assert.strictEqual(
+      (
+        await api('manager')
+          .post(`/stores/${ids.store}/inventory/${product.skuId}/write-offs`)
+          .set('Idempotency-Key', writeOffKey)
+          .send(writeOffPayload)
+          .expect(201)
+      ).body.data.onHand,
+      9,
+    );
+    await api('manager')
+      .post(`/stores/${ids.store}/inventory/${product.skuId}/write-offs`)
+      .set('Idempotency-Key', key())
+      .send({ quantity: 10, reason: 'DAMAGED' })
+      .expect(422);
+    await api()
+      .post(`/stores/${ids.store}/inventory/${product.skuId}/write-offs`)
+      .set('Idempotency-Key', key())
+      .send({ quantity: 1, reason: 'DAMAGED' })
+      .expect(403);
+    await api('manager')
+      .post(`/stores/${ids.otherStore}/inventory/${product.skuId}/write-offs`)
+      .set('Idempotency-Key', key())
+      .send({ quantity: 1, reason: 'DAMAGED' })
+      .expect(403);
+    const writeOffAudit = await one(
+      db.pool,
+      "SELECT details FROM audit_logs WHERE action='inventory.write-off' AND entity_id=$1 ORDER BY created_at DESC LIMIT 1",
+      [product.skuId],
+    );
+    assert.strictEqual(writeOffAudit!.details.quantity, 3);
+    assert.strictEqual(writeOffAudit!.details.reason, 'EXPIRED');
+    assert.strictEqual(writeOffAudit!.details.after.onHand, 9);
 
     const png = Buffer.from([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x00,
@@ -1464,6 +1908,16 @@ describe('ShopGo PostgreSQL integration', () => {
     );
     assert.strictEqual((await readdir(join(uploadRoot, 'products'))).length, 1);
 
+    const emptyCart = (await api().get(`/cart?storeId=${ids.store}`).expect(200)).body.data;
+    const cartWithProductImage = (
+      await api()
+        .put(`/cart/items/${product.skuId}`)
+        .send({ storeId: ids.store, quantity: 1, expectedVersion: emptyCart.version })
+        .expect(200)
+    ).body.data;
+    assert.strictEqual(cartWithProductImage.items[0].imageUrl, replacement.imageUrl);
+    assert.strictEqual(cartWithProductImage.items[0].unit, 'multipack');
+
     const publicCategories = (
       await request(app.getHttpServer()).get(`/api/v1/stores/${ids.store}/categories`).expect(200)
     ).body.data;
@@ -1488,10 +1942,107 @@ describe('ShopGo PostgreSQL integration', () => {
       replacement.imageUrl,
     );
 
+    const updatePayload = {
+      name: 'Táo xanh premium 500g',
+      description: 'Táo giòn đã cập nhật theo thông tin thị trường.',
+      categoryId: category.id,
+      sku: {
+        code: 'TAO-XANH-500-MOI',
+        barcode: '8930000000009',
+        name: 'Táo xanh premium 500g',
+        unit: 'case',
+      },
+      price: 49000,
+      active: true,
+      expiresOn: '2099-12-31',
+      expectedVersion: product.version,
+    };
+    const updateKey = key();
+    const updated = (
+      await api('manager')
+        .patch(`/stores/${ids.store}/catalog/products/${product.skuId}`)
+        .set('Idempotency-Key', updateKey)
+        .send(updatePayload)
+        .expect(200)
+    ).body.data;
+    assert.strictEqual(updated.name, updatePayload.name);
+    assert.strictEqual(updated.code, updatePayload.sku.code);
+    assert.strictEqual(updated.price, updatePayload.price);
+    assert.strictEqual(updated.expiresOn, updatePayload.expiresOn);
+    assert.strictEqual(updated.version, 2);
+    assert.strictEqual(
+      (
+        await api('manager')
+          .patch(`/stores/${ids.store}/catalog/products/${product.skuId}`)
+          .set('Idempotency-Key', updateKey)
+          .send(updatePayload)
+          .expect(200)
+      ).body.data.version,
+      2,
+    );
+    await api()
+      .patch(`/stores/${ids.store}/catalog/products/${product.skuId}`)
+      .set('Idempotency-Key', key())
+      .send({ ...updatePayload, expectedVersion: 2 })
+      .expect(403);
+    await api('manager')
+      .patch(`/stores/${ids.otherStore}/catalog/products/${product.skuId}`)
+      .set('Idempotency-Key', key())
+      .send({ ...updatePayload, expectedVersion: 2 })
+      .expect(403);
+    await api('manager')
+      .patch(`/stores/${ids.store}/catalog/products/${product.skuId}`)
+      .set('Idempotency-Key', key())
+      .send(updatePayload)
+      .expect(409);
+    const updatedPublicProducts = (
+      await request(app.getHttpServer())
+        .get(`/api/v1/stores/${ids.store}/products?limit=100`)
+        .expect(200)
+    ).body.data.items;
+    assert.strictEqual(
+      updatedPublicProducts.find((item: any) => item.id === product.skuId).price,
+      49000,
+    );
+    assert.strictEqual(
+      updatedPublicProducts.find((item: any) => item.id === product.skuId).expiresOn,
+      '2099-12-31',
+    );
+
+    const expired = (
+      await api('manager')
+        .patch(`/stores/${ids.store}/catalog/products/${product.skuId}`)
+        .set('Idempotency-Key', key())
+        .send({ ...updatePayload, expiresOn: '2000-01-01', expectedVersion: 2 })
+        .expect(200)
+    ).body.data;
+    assert.strictEqual(expired.active, true);
+    assert.strictEqual(expired.expiresOn, '2000-01-01');
+    const sellableAfterExpiry = (
+      await request(app.getHttpServer())
+        .get(`/api/v1/stores/${ids.store}/products?limit=100`)
+        .expect(200)
+    ).body.data.items;
+    assert.strictEqual(
+      sellableAfterExpiry.some((item: any) => item.id === product.skuId),
+      false,
+    );
+    const updateAudit = await one<{ details: Record<string, any> }>(
+      db.pool,
+      "SELECT details FROM audit_logs WHERE action='catalog.product.update' AND entity_id=$1 ORDER BY created_at DESC LIMIT 1",
+      [product.skuId],
+    );
+    assert.strictEqual(updateAudit!.details.storeId, ids.store);
+    assert.strictEqual(updateAudit!.details.after.expiresOn, '2000-01-01');
+
     await api('manager')
       .post(`/stores/${ids.store}/catalog/products`)
       .set('Idempotency-Key', key())
-      .send({ ...payload, name: 'Sản phẩm trùng mã' })
+      .send({
+        ...payload,
+        name: 'Sản phẩm trùng mã',
+        sku: { ...payload.sku, code: updatePayload.sku.code, barcode: updatePayload.sku.barcode },
+      })
       .expect(409);
     assert.strictEqual(
       (await one(
@@ -1536,6 +2087,31 @@ describe('ShopGo PostgreSQL integration', () => {
     assert.strictEqual(report.onlineCollected, o.total);
     assert.strictEqual(report.completedOrders, 0);
     assert.strictEqual(report.completedOrderValue, 0);
+  });
+  it('reports a deposit order as 15% online and the remaining balance as cash', async () => {
+    const o = await ready();
+    await api('counter')
+      .post(`/stores/${ids.store}/orders/${o.id}/collections`)
+      .set('Idempotency-Key', key())
+      .send({
+        amount: o.amountRemaining,
+        method: 'CASH',
+        shiftReference: 'REPORT-DEPOSIT',
+        expectedVersion: o.version,
+      })
+      .expect(201);
+    const from = new Date(Date.now() - 3600000).toISOString(),
+      to = new Date(Date.now() + 3600000).toISOString();
+    const report = (
+      await api('manager')
+        .get(
+          `/stores/${ids.store}/reports/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+        )
+        .expect(200)
+    ).body.data;
+    assert.strictEqual(report.onlineCollected, o.depositAmount);
+    assert.strictEqual(report.cashCollected, o.total - o.depositAmount);
+    assert.strictEqual(report.completedOrders, 0);
   });
   it('proposal needs owner confirmation and applies only once without reserving stock', async () => {
     const proposal = (

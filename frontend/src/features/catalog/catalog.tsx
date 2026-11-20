@@ -6,6 +6,7 @@ import {
   ArrowRight,
   Beef,
   Building2,
+  CalendarDays,
   Carrot,
   CheckCircle2,
   Clock3,
@@ -15,47 +16,72 @@ import {
   MapPin,
   Milk,
   PackageCheck,
+  Percent,
   Plus,
+  RotateCcw,
   Search,
+  SlidersHorizontal,
   ShoppingBag,
-  Sparkles,
+  Store as StoreIcon,
+  Tag,
   Wheat,
 } from 'lucide-react';
 import { useShop } from '@/store/shop';
 import { useResource } from '@/hooks/use-resource';
 import { api, query } from '@/lib/api';
-import { money } from '@/lib/format';
+import { isCustomerUser } from '@/lib/access';
 import type { Category, Page, Product, Store } from '@/types';
-import { GroceryArt, ProductArt, productKind } from '@/components/product-art';
+import { GroceryArt, productKind } from '@/components/product-art';
+import { ProductVisual } from '@/components/product-visual';
 import { Empty, ErrorBox, Loading, Modal } from '@/components/ui';
+import { StorePicker, StorePickerDialog } from '@/components/store-picker';
+import { FavoriteToggle } from '@/features/favorites/favorite-toggle';
+import { favoriteKey, useFavorites } from '@/features/favorites/use-favorites';
+import { StoreOffers } from '@/features/promotions/voucher-picker';
+import { ProductPrice } from '@/components/product-price';
 
-function ProductVisual({ product, large = false }: { product: Product; large?: boolean }) {
-  if (product.imageUrl) {
-    return (
-      <img
-        className={`product-uploaded-image${large ? ' product-uploaded-image-large' : ''}`}
-        src={product.imageUrl}
-        alt={product.name}
-      />
-    );
-  }
-  return <ProductArt name={product.name} large={large} />;
-}
+type SearchScope = 'auto' | 'all' | 'store';
+type StoreDestination = 'san-pham' | 'uu-dai';
 
 function productStore(product: Product, selectedStore: Store | null) {
   return product.store ?? selectedStore;
 }
 
+function expiryLabel(value: string) {
+  return new Intl.DateTimeFormat('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(new Date(`${value}T00:00:00+07:00`));
+}
+
 export function Catalog() {
   const shop = useShop();
+  const favorites = useFavorites();
   const [search, setSearch] = useState(''),
     [debounced, setDebounced] = useState(''),
+    [searchScope, setSearchScope] = useState<SearchScope>('auto'),
     [category, setCategory] = useState(''),
     [onlyStock, setOnlyStock] = useState(false),
     [cursor, setCursor] = useState('');
   const limit = 20;
   const [busy, setBusy] = useState(false),
     [selected, setSelected] = useState<Product | null>(null);
+  const [storeDestination, setStoreDestination] = useState<StoreDestination | null>(null);
+  const [scrollTarget, setScrollTarget] = useState<StoreDestination | null>(null);
+  const activeSearchScope = shop.store && searchScope !== 'all' ? 'store' : 'all';
+  useEffect(() => {
+    if (!scrollTarget) return;
+    const target = document.getElementById(scrollTarget);
+    if (!target) return;
+    target.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'start',
+    });
+    target.focus({ preventScroll: true });
+    setScrollTarget(null);
+  }, [scrollTarget, activeSearchScope, shop.store?.id]);
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebounced(search);
@@ -64,25 +90,89 @@ export function Catalog() {
     return () => clearTimeout(timer);
   }, [search]);
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const initialSearch = params.get('q');
+    if (initialSearch) setSearch(initialSearch);
+    const initialScope = params.get('scope');
+    if (initialScope === 'all' || initialScope === 'store') setSearchScope(initialScope);
+    const receiveHeaderSearch = (event: Event) => {
+      const detail = (event as CustomEvent<string | { query?: string; scope?: 'all' | 'store' }>)
+        .detail;
+      if (typeof detail === 'string') {
+        setSearch(detail);
+      } else {
+        setSearch(detail?.query ?? '');
+        if (detail?.scope) setSearchScope(detail.scope);
+      }
+      requestAnimationFrame(() =>
+        document.getElementById('san-pham')?.scrollIntoView({ behavior: 'smooth' }),
+      );
+    };
+    window.addEventListener('shopgo:header-search', receiveHeaderSearch);
+    window.addEventListener('shopgo:pickup-store-selected', showStoreCatalog);
+    return () => {
+      window.removeEventListener('shopgo:header-search', receiveHeaderSearch);
+      window.removeEventListener('shopgo:pickup-store-selected', showStoreCatalog);
+    };
+  }, []);
+  useEffect(() => {
     setCursor('');
     setSelected(null);
-  }, [shop.store?.id, category, onlyStock]);
+  }, [shop.store?.id, category, onlyStock, activeSearchScope]);
   const categories = useResource<Category[]>(
-    shop.store ? `/stores/${shop.store.id}/categories` : '/categories',
+    activeSearchScope === 'store' && shop.store
+      ? `/stores/${shop.store.id}/categories`
+      : '/categories',
   );
   const products = useResource<Page<Product>>(
-    shop.store
+    activeSearchScope === 'store' && shop.store
       ? `/stores/${shop.store.id}/products?${query({ limit, cursor, q: debounced, categoryId: category, inStock: onlyStock ? true : undefined })}`
       : `/products?${query({ limit, cursor, q: debounced, categoryId: category, inStock: onlyStock ? true : undefined })}`,
+    30000,
   );
-  function chooseStore(storeId: string) {
-    shop.setStore(storeId);
+  const selectedProductStore = selected ? productStore(selected, shop.store) : null;
+  function favoriteButton(product: Product, store: Store | null, inline = false) {
+    if (!store || (shop.user && !isCustomerUser(shop.user))) return null;
+    const offer = { ...product, store, sellable: true };
+    return (
+      <FavoriteToggle
+        name={product.name}
+        saved={favorites.keys.has(favoriteKey(offer))}
+        disabled={favorites.busy}
+        inline={inline}
+        onToggle={() => void favorites.toggle(offer)}
+      />
+    );
+  }
+  function showStoreCatalog() {
+    setSearchScope('auto');
+    setSearch('');
+    setDebounced('');
     setCategory('');
+    setOnlyStock(false);
     setCursor('');
     setSelected(null);
-    requestAnimationFrame(() =>
-      document.getElementById('san-pham')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-    );
+    setScrollTarget('san-pham');
+  }
+  function openStoreSection(destination: StoreDestination) {
+    if (!isCustomerUser(shop.user)) {
+      shop.openAuth();
+      return;
+    }
+    if (!shop.store) {
+      setStoreDestination(destination);
+      return;
+    }
+    showStoreCatalog();
+    setScrollTarget(destination);
+  }
+  async function enterProductStore(storeId: string) {
+    setBusy(true);
+    try {
+      if (await shop.openStore(storeId)) showStoreCatalog();
+    } finally {
+      setBusy(false);
+    }
   }
   async function add(product: Product) {
     if (!shop.token) {
@@ -91,7 +181,7 @@ export function Catalog() {
     }
     const offerStore = productStore(product, shop.store);
     if (!shop.store || !offerStore || offerStore.id !== shop.store.id) {
-      if (offerStore) chooseStore(offerStore.id);
+      if (offerStore) await enterProductStore(offerStore.id);
       return;
     }
     setBusy(true);
@@ -114,49 +204,214 @@ export function Catalog() {
   }
   const icons = [Carrot, Beef, Egg, Wheat, Milk];
   return (
-    <div className="container home">
-      {shop.storesError && (
-        <ErrorBox error={new Error(shop.storesError)} retry={() => void shop.refreshStores()} />
-      )}
-      <section className="hero">
-        <div className="hero-copy">
-          <p className="eyebrow">TƯƠI NGON MỖI NGÀY · NHẬN HÀNG THEO GIỜ BẠN CHỌN</p>
+    <div className="container home shopgo-retail-home">
+      <section className="shopgo-retail-hero">
+        <div className="shopgo-retail-hero-copy">
+          <p className="shopgo-retail-kicker">ĐẶT HÀNG SIÊU THỊ ONLINE</p>
           <h1>
-            Đi chợ nhẹ tênh.
-            <br />
-            <em>Nhận hàng thảnh thơi.</em>
+            Chọn hàng trước
+            <span>Đến lấy sau</span>
           </h1>
           <p>
-            Chọn những món bạn cần, để ShopGo chuẩn bị.
-            <br />
-            Ghé cửa hàng, nhận túi ngon lành rồi đi.
+            Mua sắm nhanh chóng, không cần xếp hàng, tránh đông người và chủ động thời gian của bạn.
           </p>
-          <a href="#san-pham" className="button">
-            Bắt đầu mua sắm <ArrowRight size={17} />
+          <div className="shopgo-retail-hero-points" aria-label="Lợi ích ShopGo">
+            <span>
+              <CheckCircle2 size={18} /> Đặt hàng nhanh
+            </span>
+            <span>
+              <Clock3 size={18} /> Nhận đúng hẹn
+            </span>
+            <span>
+              <PackageCheck size={18} /> Không xếp hàng
+            </span>
+          </div>
+          <a href="#san-pham" className="button shopgo-retail-hero-action">
+            <ShoppingBag size={19} /> Đặt hàng ngay <ArrowRight size={17} />
           </a>
         </div>
-        <div className="hero-visual">
+        <div
+          className="shopgo-retail-hero-media"
+          role="img"
+          aria-label="Khách hàng đặt trước thực phẩm và đến siêu thị nhận hàng"
+        >
           <GroceryArt />
-          <div className="hero-tag">
-            <PackageCheck size={25} />
-            <div>
-              <strong>Chọn online. Ghé nhận ngay.</strong>
-              <small>Gọn một túi, nhẹ cả ngày.</small>
-            </div>
+          <div className="shopgo-retail-floating-card card-order">
+            <ShoppingBag size={20} />
+            <span>Đặt hàng online</span>
+            <CheckCircle2 size={16} />
+          </div>
+          <div className="shopgo-retail-floating-card card-time">
+            <Clock3 size={21} />
+            <span>Chọn giờ lấy hàng</span>
+          </div>
+          <div className="shopgo-retail-floating-card card-pickup">
+            <MapPin size={21} />
+            <span>Đến điểm lấy hàng</span>
           </div>
         </div>
       </section>
-      <div className="benefits">
+
+      <section
+        className={`shopgo-retail-shop-tools${isCustomerUser(shop.user) ? '' : ' without-picker'}`}
+        aria-label="Tìm kiếm sản phẩm"
+      >
+        <div className="shopgo-retail-search-box">
+          <div className="shopgo-retail-search-scope" role="group" aria-label="Phạm vi tìm kiếm">
+            <button
+              type="button"
+              className={activeSearchScope === 'all' ? 'active' : ''}
+              aria-pressed={activeSearchScope === 'all'}
+              onClick={() => {
+                setSearchScope('all');
+                setCategory('');
+                setCursor('');
+              }}
+            >
+              <Building2 size={16} />
+              <span>
+                <strong>Toàn ShopGo</strong>
+                <small>Tất cả cửa hàng</small>
+              </span>
+            </button>
+            <button
+              type="button"
+              className={activeSearchScope === 'store' ? 'active' : ''}
+              aria-pressed={activeSearchScope === 'store'}
+              disabled={!shop.store}
+              onClick={() => {
+                setSearchScope('store');
+                setCategory('');
+                setCursor('');
+              }}
+            >
+              <StoreIcon size={16} />
+              <span>
+                <strong>Trong cửa hàng</strong>
+                <small>{shop.store?.name ?? 'Chọn cửa hàng trước'}</small>
+              </span>
+            </button>
+          </div>
+          <form
+            className="shopgo-retail-main-search"
+            role="search"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setDebounced(search.trim());
+              setCursor('');
+              document.getElementById('san-pham')?.scrollIntoView({ behavior: 'smooth' });
+            }}
+          >
+            <Search size={23} />
+            <input
+              aria-label="Tìm sản phẩm"
+              placeholder={
+                activeSearchScope === 'store' && shop.store
+                  ? `Tìm trong ${shop.store.name}…`
+                  : 'Tìm sản phẩm ở tất cả cửa hàng…'
+              }
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <button type="submit">Tìm kiếm</button>
+          </form>
+        </div>
+        {isCustomerUser(shop.user) && (
+          <div className="shopgo-retail-pickup-select">
+            <StorePicker onSelect={showStoreCatalog} />
+          </div>
+        )}
+      </section>
+
+      {activeSearchScope === 'store' && shop.store && (
+        <StoreOffers key={shop.store.id} storeId={shop.store.id} />
+      )}
+      <section className="shopgo-retail-category-strip" aria-label="Danh mục nổi bật">
+        <button
+          className={!category ? 'active' : ''}
+          onClick={() => {
+            setCategory('');
+            setCursor('');
+          }}
+        >
+          <Grid2X2 size={24} />
+          <span>Tất cả danh mục</span>
+        </button>
+        {categories.data?.slice(0, 8).map((item) => {
+          const Icon = icons[productKind(item.name)] ?? Grid2X2;
+          return (
+            <button
+              key={item.id}
+              className={category === item.id ? 'active' : ''}
+              onClick={() => {
+                setCategory(item.id);
+                setCursor('');
+                document.getElementById('san-pham')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+            >
+              <Icon size={25} />
+              <span>{item.name}</span>
+            </button>
+          );
+        })}
+      </section>
+
+      <section className="shopgo-retail-promo-grid" aria-label="Thông tin mua sắm">
+        <article className="promo-sale">
+          <div>
+            <small>KHUYẾN MÃI SHOPGO</small>
+            <h2 id="store-offers-card-title">Ưu đãi từ cửa hàng</h2>
+            <p>Chọn cửa hàng và xem các mã giảm giá dành cho giỏ hàng của bạn.</p>
+          </div>
+          <Percent size={68} aria-hidden="true" />
+          <button
+            type="button"
+            className="store-card-action"
+            aria-labelledby="store-offers-card-title"
+            onClick={() => openStoreSection('uu-dai')}
+          />
+        </article>
+        <article className="promo-pickup">
+          <div>
+            <small>CLICK & COLLECT</small>
+            <h2 id="store-shopping-card-title">Mua sắm thông minh</h2>
+            <p>Chọn cửa hàng, đặt giờ nhận và theo dõi đơn ngay trong ShopGo.</p>
+          </div>
+          <StoreIcon size={66} aria-hidden="true" />
+          <button
+            type="button"
+            className="store-card-action"
+            aria-labelledby="store-shopping-card-title"
+            onClick={() => openStoreSection('san-pham')}
+          />
+        </article>
+        <Link href="/huong-dan" className="promo-guide">
+          <div>
+            <small>CHỈ 3 BƯỚC</small>
+            <h2>Nhận hàng tiện lợi</h2>
+            <span className="promo-guide-action">Xem hướng dẫn</span>
+          </div>
+          <CalendarDays size={64} aria-hidden="true" />
+        </Link>
+      </section>
+
+      <div className="benefits shopgo-retail-benefits">
         <div className="benefit">
           <span>
             <Leaf size={20} />
           </span>
           <div>
-            <strong>Chọn món ngay tại cửa hàng</strong>
-            <p>Giá và hàng có sẵn theo từng chi nhánh</p>
+            <strong id="store-products-card-title">Hàng hóa theo cửa hàng</strong>
+            <p>Giá và tồn kho hiển thị theo từng chi nhánh</p>
           </div>
+          <button
+            type="button"
+            className="store-card-action"
+            aria-labelledby="store-products-card-title"
+            onClick={() => openStoreSection('san-pham')}
+          />
         </div>
-        <div className="benefit">
+        <Link href="/thanh-toan" className="benefit">
           <span>
             <Clock3 size={20} />
           </span>
@@ -164,83 +419,41 @@ export function Catalog() {
             <strong>Chủ động thời gian nhận</strong>
             <p>Chọn khung giờ phù hợp với bạn</p>
           </div>
-        </div>
-        <div className="benefit">
+        </Link>
+        <Link href="/don-hang" className="benefit">
           <span>
             <CheckCircle2 size={20} />
           </span>
           <div>
-            <strong>Soạn sẵn, nhận gọn</strong>
-            <p>Mã QR giúp nhận đúng đơn, thật nhanh</p>
+            <strong>Nhận hàng an toàn</strong>
+            <p>Mã QR dùng một lần giúp nhận đúng đơn</p>
           </div>
-        </div>
+        </Link>
       </div>
-      <section className="store-discovery" aria-labelledby="store-discovery-title">
-        <div className="store-discovery-heading">
+
+      <section className="catalog shopgo-retail-catalog" id="san-pham" tabIndex={-1}>
+        <div className="catalog-heading shopgo-retail-catalog-heading">
           <div>
-            <p className="eyebrow">MỖI CỬA HÀNG, MỘT GIAN HÀNG RIÊNG</p>
-            <h2 id="store-discovery-title">Bạn muốn mua ở đâu?</h2>
-            <p>Xem toàn bộ sản phẩm hoặc vào một cửa hàng để xem đúng giá và tồn kho tại đó.</p>
-          </div>
-          {shop.store && (
-            <button className="button secondary small" onClick={() => chooseStore('')}>
-              Xem tất cả cửa hàng
-            </button>
-          )}
-        </div>
-        <div className="store-scope-list" data-testid="store-scope-list">
-          <button
-            className={`store-scope-card all-stores${!shop.store ? ' active' : ''}`}
-            aria-pressed={!shop.store}
-            onClick={() => chooseStore('')}
-          >
-            <span className="store-scope-icon">
-              <Building2 size={21} />
-            </span>
-            <span>
-              <strong>Tất cả cửa hàng</strong>
-              <small>Khám phá sản phẩm từ toàn bộ ShopGo</small>
-            </span>
-          </button>
-          {shop.stores.map((store) => (
-            <button
-              key={store.id}
-              className={`store-scope-card${shop.store?.id === store.id ? ' active' : ''}`}
-              aria-label={`Xem cửa hàng ${store.name}`}
-              aria-pressed={shop.store?.id === store.id}
-              onClick={() => chooseStore(store.id)}
-            >
-              <span className="store-scope-icon">
-                <MapPin size={20} />
-              </span>
-              <span>
-                <strong>{store.name}</strong>
-                <small>{store.address}</small>
-              </span>
-              <ArrowRight size={16} />
-            </button>
-          ))}
-        </div>
-      </section>
-      <section className="catalog" id="san-pham">
-        <div className="catalog-heading">
-          <div>
-            <p className="eyebrow">MỘT CHÚT TƯƠI NGON CHO NGÀY MỚI</p>
+            <p className="eyebrow">MUA SẮM TẠI SHOPGO</p>
             <h2>Hôm nay, bạn cần gì?</h2>
           </div>
-          <label className="search-box">
-            <Search size={18} />
-            <input
-              aria-label="Tìm sản phẩm"
-              placeholder="Tìm rau củ, thịt, sữa và nhiều hơn…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </label>
+          <p>
+            {products.data
+              ? `${products.data.items.length} sản phẩm đang hiển thị`
+              : 'Đang tải sản phẩm'}
+            {activeSearchScope === 'store' && shop.store
+              ? ` tại ${shop.store.name}`
+              : ' từ tất cả cửa hàng'}
+          </p>
         </div>
-        <div className="catalog-layout">
-          <aside>
+        <div className="catalog-layout shopgo-retail-catalog-layout">
+          <aside className="shopgo-retail-filter-panel">
+            <div className="shopgo-retail-filter-title">
+              <SlidersHorizontal size={19} />
+              <strong>Bộ lọc sản phẩm</strong>
+            </div>
             <div className="category-menu" aria-label="Danh mục sản phẩm">
+              <h3>Danh mục</h3>
               <button
                 className={!category ? 'active' : ''}
                 onClick={() => {
@@ -268,77 +481,102 @@ export function Catalog() {
                 );
               })}
             </div>
-            <div className="pickup-note">
-              <ShoppingBag size={28} strokeWidth={1.4} />
-              <h3>Mua gọn. Sống chậm.</h3>
-              <p>Đặt trước những món cần thiết, dành thêm một chút thời gian cho mình.</p>
-              <Link className="text-button" href="/huong-dan">
-                Cách nhận hàng <ArrowRight size={13} />
-              </Link>
-            </div>
-          </aside>
-          <div>
-            <div className="catalog-toolbar">
-              <span>
-                {products.data
-                  ? `${products.data.items.length} sản phẩm đang hiển thị`
-                  : 'Đang tải sản phẩm'}
-                {shop.store ? ` · ${shop.store.name}` : ' · Tất cả cửa hàng'}
-              </span>
+            <div className="shopgo-retail-stock-filter">
+              <h3>Tình trạng hàng</h3>
               <label>
                 <input
                   type="checkbox"
                   checked={onlyStock}
-                  onChange={(e) => setOnlyStock(e.target.checked)}
-                />{' '}
-                Chỉ còn hàng
+                  onChange={(event) => setOnlyStock(event.target.checked)}
+                />
+                <span>Chỉ hiển thị còn hàng</span>
               </label>
+            </div>
+            <div className="shopgo-retail-coming-filter">
+              <Tag size={18} />
+              <div>
+                <strong>Thương hiệu & khoảng giá</strong>
+                <small>Sắp ra mắt khi dữ liệu sản phẩm được bổ sung.</small>
+              </div>
+            </div>
+            <button
+              className="shopgo-retail-reset-filter"
+              onClick={() => {
+                setSearch('');
+                setCategory('');
+                setOnlyStock(false);
+              }}
+            >
+              <RotateCcw size={16} /> Xóa tất cả bộ lọc
+            </button>
+            <div className="pickup-note shopgo-retail-pickup-note">
+              <ShoppingBag size={27} strokeWidth={1.5} />
+              <h3>Đặt trước, nhận nhanh</h3>
+              <p>Chọn món và khung giờ, ShopGo sẽ chuẩn bị đơn trước khi bạn đến.</p>
+            </div>
+          </aside>
+          <div className="shopgo-retail-product-results">
+            <div className="catalog-toolbar shopgo-retail-catalog-toolbar">
+              <span>
+                <Grid2X2 size={17} />
+                {debounced ? `Kết quả cho “${debounced}”` : 'Tất cả sản phẩm'}
+              </span>
+              <small>
+                {activeSearchScope === 'store' && shop.store
+                  ? `Trong ${shop.store.name}`
+                  : 'Trên toàn ShopGo'}
+              </small>
             </div>
             <ErrorBox error={products.error} retry={products.refresh} />
             {products.loading && !products.data ? (
               <Loading />
             ) : products.data?.items.length === 0 ? (
               <Empty title="Chưa tìm thấy món bạn cần">
-                <button
-                  className="text-button"
-                  onClick={() => {
-                    setSearch('');
-                    setCategory('');
-                    setOnlyStock(false);
-                  }}
-                >
-                  Xem tất cả sản phẩm
-                </button>
+                <div className="shopgo-retail-empty-actions">
+                  {activeSearchScope === 'store' && (
+                    <button
+                      className="button secondary small"
+                      onClick={() => {
+                        setSearchScope('all');
+                        setCategory('');
+                        setCursor('');
+                      }}
+                    >
+                      Tìm trong tất cả cửa hàng
+                    </button>
+                  )}
+                  <button
+                    className="text-button"
+                    onClick={() => {
+                      setSearch('');
+                      setDebounced('');
+                      setCategory('');
+                      setOnlyStock(false);
+                    }}
+                  >
+                    Xem tất cả sản phẩm
+                  </button>
+                </div>
               </Empty>
             ) : (
               <div className="product-grid">
                 {products.data?.items.map((product) => {
                   const offerStore = productStore(product, shop.store);
-                  const isInsideStore = !!shop.store && offerStore?.id === shop.store.id;
+                  const isInsideStore = activeSearchScope === 'store' && !!offerStore;
                   return (
                     <article
-                      className="product-card"
+                      className="product-card shopgo-retail-product-card"
                       key={`${offerStore?.id ?? 'unknown'}:${product.id}`}
                     >
+                      {favoriteButton(product, offerStore)}
                       <button
                         className={`product-picture${product.imageUrl ? ' has-image' : ''}`}
                         onClick={() => setSelected(product)}
                         aria-label={`Xem ${product.name}`}
                       >
-                        <span className={`stock-tag ${product.available <= 0 ? 'sold' : ''}`}>
-                          {product.available <= 0
-                            ? 'Tạm hết hàng'
-                            : product.available <= 5
-                              ? 'Sắp hết hàng'
-                              : 'Có sẵn tại cửa hàng'}
-                        </span>
                         <ProductVisual product={product} />
                       </button>
                       <div className="product-info">
-                        <small>
-                          {categories.data?.find((c) => c.id === product.categoryId)?.name ??
-                            'Thực phẩm & thiết yếu'}
-                        </small>
                         <button className="product-name" onClick={() => setSelected(product)}>
                           {product.name}
                         </button>
@@ -349,12 +587,30 @@ export function Catalog() {
                           <div className="product-store-line">
                             <MapPin size={13} />
                             <span>
-                              Bán bởi <strong>{offerStore.name}</strong>
+                              <span>
+                                Bán bởi <strong>{offerStore.name}</strong>
+                              </span>
+                              <small>{offerStore.address}</small>
                             </span>
                           </div>
                         )}
+                        <span className={`stock-tag ${product.available <= 0 ? 'sold' : ''}`}>
+                          {product.available <= 0
+                            ? 'Tạm hết hàng'
+                            : product.available <= 5
+                              ? `Chỉ còn ${product.available}`
+                              : 'Còn hàng'}
+                        </span>
+                        {product.expiresOn && (
+                          <span className="shopgo-retail-product-expiry">
+                            <CalendarDays size={12} /> HSD {expiryLabel(product.expiresOn)}
+                          </span>
+                        )}
                         <div className="product-bottom">
-                          <strong>{money(product.price)}</strong>
+                          <ProductPrice
+                            price={product.price}
+                            originalPrice={product.originalPrice}
+                          />
                           {isInsideStore ? (
                             <button
                               className="add-button"
@@ -362,16 +618,17 @@ export function Catalog() {
                               disabled={busy || product.available <= 0}
                               onClick={() => void add(product)}
                             >
-                              <Plus size={18} />
+                              <ShoppingBag size={17} />
+                              <span>Thêm vào giỏ</span>
                             </button>
                           ) : (
                             <button
                               className="visit-store-button"
-                              aria-label={`Vào cửa hàng ${offerStore?.name ?? ''}`}
-                              disabled={!offerStore}
-                              onClick={() => offerStore && chooseStore(offerStore.id)}
+                              aria-label={`Vào cửa hàng ${offerStore?.name ?? ''} và xem sản phẩm khác`}
+                              disabled={!offerStore || busy}
+                              onClick={() => offerStore && void enterProductStore(offerStore.id)}
                             >
-                              Vào cửa hàng <ArrowRight size={13} />
+                              Xem cửa hàng & sản phẩm khác <ArrowRight size={13} />
                             </button>
                           )}
                         </div>
@@ -413,31 +670,32 @@ export function Catalog() {
           </div>
         </div>
       </section>
-      <section className="journey">
-        <div>
-          <p className="eyebrow">CLICK & COLLECT</p>
-          <h2>
-            Ba bước nhỏ.
-            <br />
-            Một ngày nhẹ hơn.
-          </h2>
-        </div>
-        <div className="journey-step">
-          <b>01 / CHỌN</b>
-          <h3>Thêm món yêu thích</h3>
-          <p>Chọn cửa hàng và những thứ bạn cần.</p>
-        </div>
-        <div className="journey-step">
-          <b>02 / ĐẶT</b>
-          <h3>Hẹn một khung giờ</h3>
-          <p>Cửa hàng nhận đơn, chuẩn bị túi của bạn.</p>
-        </div>
-        <div className="journey-step">
-          <b>03 / NHẬN</b>
-          <h3>Ghé qua, mang về</h3>
-          <p>Đưa mã QR và nhận đơn đã soạn sẵn.</p>
-        </div>
+      <section className="journey shopgo-retail-journey">
+        <h2>Đặt hàng và nhận hàng chỉ với 3 bước</h2>
+        {[
+          ['01', 'Chọn sản phẩm', 'Mua sắm online như tại siêu thị'],
+          ['02', 'Chọn cửa hàng & thời gian', 'Chọn điểm lấy hàng và khung giờ phù hợp'],
+          ['03', 'Đến nhận hàng', 'Lấy hàng nhanh chóng, không cần xếp hàng'],
+        ].map(([step, title, copy]) => (
+          <div className="journey-step" key={step}>
+            <b>{step}</b>
+            <div>
+              <h3>{title}</h3>
+              <p>{copy}</p>
+            </div>
+          </div>
+        ))}
       </section>
+      {isCustomerUser(shop.user) && (
+        <StorePickerDialog
+          open={!!storeDestination}
+          onClose={() => setStoreDestination(null)}
+          onSelect={(store) => {
+            showStoreCatalog();
+            setScrollTarget(store ? storeDestination : 'san-pham');
+          }}
+        />
+      )}
       <Modal
         open={!!selected}
         onClose={() => setSelected(null)}
@@ -450,23 +708,29 @@ export function Catalog() {
               {selected.description || 'Sản phẩm được bán tại cửa hàng đang chọn.'}
             </p>
             <div className="row between">
-              <strong style={{ fontSize: 25 }}>{money(selected.price)}</strong>
+              <ProductPrice price={selected.price} originalPrice={selected.originalPrice} />
               <span className="badge">Còn {selected.available} đơn vị</span>
             </div>
             <small>Mã SKU: {selected.code}</small>
-            {productStore(selected, shop.store) && (
+            {selected.expiresOn && (
+              <div className="info-note shopgo-retail-expiry-note">
+                <CalendarDays size={16} /> Hạn sử dụng gần nhất: {expiryLabel(selected.expiresOn)}
+              </div>
+            )}
+            {selectedProductStore && (
               <div className="product-store-detail">
                 <span>
                   <MapPin size={18} />
                 </span>
                 <div>
                   <small>CỬA HÀNG BÁN SẢN PHẨM NÀY</small>
-                  <strong>{productStore(selected, shop.store)!.name}</strong>
-                  <p>{productStore(selected, shop.store)!.address}</p>
+                  <strong>{selectedProductStore.name}</strong>
+                  <p>{selectedProductStore.address}</p>
                 </div>
               </div>
             )}
-            {shop.store?.id === productStore(selected, shop.store)?.id ? (
+            {favoriteButton(selected, selectedProductStore, true)}
+            {activeSearchScope === 'store' && selectedProductStore ? (
               <button
                 disabled={busy || selected.available <= 0}
                 className="button wide"
@@ -475,13 +739,18 @@ export function Catalog() {
                 <Plus size={18} />
                 Thêm vào giỏ
               </button>
-            ) : (
+            ) : selectedProductStore ? (
               <button
                 className="button wide"
-                onClick={() => chooseStore(productStore(selected, shop.store)!.id)}
+                disabled={busy}
+                onClick={() => void enterProductStore(selectedProductStore.id)}
               >
                 <Building2 size={18} />
-                Xem cửa hàng {productStore(selected, shop.store)?.name}
+                Vào {selectedProductStore.name} và xem sản phẩm khác
+              </button>
+            ) : (
+              <button className="button wide" disabled>
+                Chưa xác định được cửa hàng bán
               </button>
             )}
           </div>

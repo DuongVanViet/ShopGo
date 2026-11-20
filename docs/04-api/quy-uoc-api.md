@@ -64,7 +64,7 @@ Content-Type: application/json
 }
 ```
 
-Response 201 gồm orderId, code, status, paymentStatus, expiresAt và version. Payment redirect/session được lấy từ endpoint attempt riêng; lỗi khởi tạo thanh toán không làm mất đơn đã được giữ tồn. PaymentMethod MVP là ONLINE hoặc PAY_AT_PICKUP; provider được lựa chọn phía cấu hình server.
+Response 201 gồm orderId, code, status, paymentStatus, expiresAt, version và snapshot `paymentPlan`, `depositPercent`, `depositAmount`, `amountDueNow`, `remainingAmount`. Quote trả hai `paymentOptions`: `ONLINE/FULL_ONLINE` thu 100% và `PAY_AT_PICKUP/DEPOSIT_15` thu trước 15% làm tròn lên, phần còn lại tại quầy. Client chỉ gửi lựa chọn `paymentMethod`, không gửi tỷ lệ hoặc số tiền. Payment session được lấy từ endpoint attempt riêng; lỗi khởi tạo thanh toán không làm mất đơn đã được giữ tồn.
 
 ## Realtime và webhook
 

@@ -50,6 +50,7 @@ async function mockApp(
       });
     if (path === '/categories' && method === 'GET') return fulfill([]);
     if (path === `/stores/${store.id}/catalog/categories` && method === 'GET') return fulfill([]);
+    if (path === `/stores/${store.id}` && method === 'GET') return fulfill(store);
     if (path === `/stores/${store.id}/catalog/products` && method === 'GET')
       return fulfill({ items: [], nextCursor: null });
     if (path === `/stores/${store.id}/inventory` && method === 'GET')

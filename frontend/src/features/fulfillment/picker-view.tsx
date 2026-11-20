@@ -160,6 +160,11 @@ export function PickerView() {
                 <div className="panel-heading">
                   <div>
                     <h2>Đơn {shortCode(detail.data.code)}</h2>
+                    {detail.data.voucherCode && (
+                      <p>
+                        Mã {detail.data.voucherCode} · Giảm {money(detail.data.discount)}
+                      </p>
+                    )}
                     <small>{detail.data.slot ? dateTime(detail.data.slot.startsAt) : ''}</small>
                   </div>
                   <Badge status={detail.data.status} />

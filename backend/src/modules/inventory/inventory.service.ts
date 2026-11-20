@@ -63,4 +63,83 @@ export class InventoryService {
       });
     });
   }
+
+  writeOff(
+    actor: Actor,
+    storeId: string,
+    skuId: string,
+    input: { quantity: number; reason: 'EXPIRED' | 'DAMAGED'; note?: string },
+    key: string | undefined,
+    requestId: string,
+  ) {
+    return this.db.tx(async (tx) => {
+      await storeAccess(tx, actor, storeId, ['MANAGER']);
+      return idempotent(
+        tx,
+        actor.id,
+        `inventory.write-off:${storeId}:${skuId}`,
+        key,
+        input,
+        async () => {
+          const balance = must(
+            await one(
+              tx,
+              `SELECT b.*,s.name FROM inventory_balances b
+               JOIN skus s ON s.id=b.sku_id
+               WHERE b.store_id=$1 AND b.sku_id=$2 FOR UPDATE OF b`,
+              [storeId, skuId],
+            ),
+            'INVENTORY_NOT_FOUND',
+            'Sản phẩm không thuộc tồn kho của cửa hàng này.',
+            404,
+          );
+          const available = balance.on_hand - balance.reserved;
+          if (input.quantity > available)
+            fail(
+              'INSUFFICIENT_AVAILABLE_STOCK',
+              `Chỉ có thể loại tối đa ${available} sản phẩm; ${balance.reserved} sản phẩm đang được giữ cho đơn hàng.`,
+              422,
+            );
+          const updated = must(
+            await one(
+              tx,
+              `UPDATE inventory_balances
+               SET on_hand=on_hand-$3,version=version+1,updated_at=now()
+               WHERE store_id=$1 AND sku_id=$2
+               RETURNING *,on_hand-reserved AS available`,
+              [storeId, skuId, input.quantity],
+            ),
+          );
+          await tx.query(
+            "INSERT INTO stock_movements(store_id,sku_id,delta_on_hand,delta_reserved,reason,reference_id,actor_id) VALUES($1,$2,$3,0,'ADJUSTMENT',$4,$5)",
+            [
+              storeId,
+              skuId,
+              -input.quantity,
+              `write-off:${input.reason.toLowerCase()}:${actor.id}:${key}`,
+              actor.id,
+            ],
+          );
+          await audit(tx, actor.id, 'inventory.write-off', 'sku', skuId, requestId, {
+            storeId,
+            productName: balance.name,
+            quantity: input.quantity,
+            reason: input.reason,
+            note: input.note ?? null,
+            before: {
+              onHand: balance.on_hand,
+              reserved: balance.reserved,
+              available,
+            },
+            after: {
+              onHand: updated.on_hand,
+              reserved: updated.reserved,
+              available: updated.available,
+            },
+          });
+          return updated;
+        },
+      );
+    });
+  }
 }

@@ -8,16 +8,16 @@ Luồng bảy bước có sơ đồ tương tác giữa khách, cổng tiền, p
 2. Backend tạo quote có version giỏ, giá, chiết khấu, phí, tổng tiền và expiresAt. Quote không bảo đảm còn hàng hay suất.
 3. Checkout kèm quoteId và Idempotency-Key; backend xác minh quote chưa hết hạn, dữ liệu không đổi, cửa hàng nhận đơn.
 4. Trong một transaction: kiểm tra tồn khả dụng, giữ từng SKU, chiếm suất slot, ghi đơn/dòng snapshot và outbox. Mọi bước lỗi đều rollback.
-5. Trả tại quầy: order CONFIRMED, payment UNPAID; reservation chưa hết hạn tự động sau khi được xác nhận. Trực tuyến: order PENDING_PAYMENT, reservation có hạn, mặc định đề xuất 10 phút.
-6. Với đơn online, tạo payment attempt sau commit. Nếu cổng lỗi, khách có thể thử lại trên cùng đơn còn hạn. Không tạo đơn mới chỉ vì trình duyệt tải lại.
+5. Khách chọn trả đủ online hoặc đặt cọc 15% online và trả phần còn lại tại quầy. Với tổng lớn hơn 0, cả hai phương án đều tạo order PENDING_PAYMENT và reservation ACTIVE có hạn; tỷ lệ/số tiền được backend tính và snapshot trên đơn.
+6. Tạo payment attempt sau commit với đúng `amountDueNow`. Khi đủ khoản ban đầu trước hạn, đơn chuyển CONFIRMED và reservation COMMITTED. Nếu cổng lỗi, khách thử lại trên cùng đơn còn hạn; không tạo đơn mới chỉ vì trình duyệt tải lại.
 
 ## 2. Trạng thái đơn Click & Collect
 
 ```mermaid
 stateDiagram-v2
-  [*] --> PENDING_PAYMENT: Thanh toán online
-  [*] --> CONFIRMED: Trả tại quầy
-  PENDING_PAYMENT --> CONFIRMED: Thanh toán hợp lệ trước hạn
+  [*] --> PENDING_PAYMENT: Chờ trả đủ hoặc cọc 15%
+  [*] --> CONFIRMED: Đơn 0 đồng
+  PENDING_PAYMENT --> CONFIRMED: Đã trả amountDueNow trước hạn
   PENDING_PAYMENT --> EXPIRED: Hết hạn giữ hàng
   PENDING_PAYMENT --> CANCELLED: Khách hủy
   CONFIRMED --> PICKING: Picker nhận soạn
@@ -33,7 +33,7 @@ COMPLETED, CANCELLED và EXPIRED là trạng thái cuối. Hoàn tiền/đổi t
 ## 3. Giữ tồn và trừ tồn
 
 - available = on_hand − reserved; luôn có on_hand ≥ reserved ≥ 0.
-- ACTIVE: reserved tăng, on_hand chưa đổi. Khi thanh toán online thành công, reservation chuyển COMMITTED; khi trả tại quầy, COMMITTED ngay lúc xác nhận đơn. COMMITTED vẫn chiếm reserved và không bị job hết hạn thanh toán thu hồi.
+- ACTIVE: reserved tăng, on_hand chưa đổi. Khi thanh toán đủ online hoặc khoản cọc 15% thành công, reservation chuyển COMMITTED. COMMITTED vẫn chiếm reserved và không bị job hết hạn thanh toán thu hồi.
 - Bắt đầu soạn không trừ on_hand. Hàng đã lấy trên kệ vẫn thuộc tồn vật lý và được giữ cho đơn.
 - Khi bàn giao: COMMITTED → CONSUMED; cùng transaction giảm on_hand và reserved theo số lượng, tạo stock ledger, hoàn tất đơn.
 - Khi hủy/hết hạn: ACTIVE hoặc COMMITTED → RELEASED; reserved giảm một lần. Hàng đã soạn phải được xác nhận trả về khu vực bán hoặc chuyển xử lý hư hỏng trước khi mở bán lại.
@@ -53,7 +53,7 @@ READY phát sinh token QR ngẫu nhiên, lưu hash, có expiresAt. QR không ch�
 
 ## 6. Hủy, no-show, hoàn tiền và slot
 
-Khách tự hủy trước PICKING theo policy cấu hình; sau đó cần quản lý xử lý. Hủy đơn đã thu tiền tạo refund request gắn payment, không đánh dấu REFUNDED chỉ vì đã gửi lệnh. Worker/callback/đối soát cập nhật kết quả thực tế.
+Khách tự hủy trước PICKING theo policy cấu hình; sau đó cần quản lý xử lý. Chính sách MVP hiện tạo refund request cho toàn bộ tiền online đã thu, kể cả khoản cọc; chưa tự động tịch thu cọc do no-show. Không đánh dấu REFUNDED chỉ vì đã gửi lệnh; worker/callback/đối soát cập nhật kết quả thực tế.
 
 Slot booking ACTIVE chiếm sức chứa; RELEASED trả suất nếu hủy/hết hạn. Bàn giao chuyển FULFILLED và vẫn tính vào tổng lượng đã phục vụ của slot; không mở lại sức chứa để nhận thêm đơn quá năng lực ban đầu. Job no-show chỉ cảnh báo; quản lý quyết định gia hạn/hủy, kiểm tra hàng lạnh và hoàn tiền theo policy cần chốt.
 

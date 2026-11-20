@@ -34,6 +34,7 @@ async function mockApp(page: Page, user?: TestUser) {
     if (path === '/stores' && method === 'GET') {
       return fulfill({ items: [store], nextCursor: null });
     }
+    if (path === `/stores/${store.id}` && method === 'GET') return fulfill(store);
     if (path === '/products' && method === 'GET') {
       return fulfill({ items: [], nextCursor: null });
     }

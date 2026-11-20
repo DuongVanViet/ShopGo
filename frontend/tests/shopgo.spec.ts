@@ -1,4 +1,5 @@
 import { test, expect, type Browser, type Page } from '@playwright/test';
+import { choosePickupStore, pickupStoreButton } from './store-picker';
 
 async function login(page: Page, role: string) {
   await page.getByRole('link', { name: 'Đăng nhập', exact: true }).click();
@@ -44,6 +45,7 @@ test('customer sees the exact store address, in-app pin and Google Maps directio
   await page.route('**/api/v1/auth/login', (route) =>
     route.fulfill({ json: { data: { accessToken: 'customer-location-token' } } }),
   );
+  await page.route('**/api/v1/me/favorites', (route) => route.fulfill({ json: { data: [] } }));
   await page.route('**/api/v1/me', (route) =>
     route.fulfill({
       json: {
@@ -105,9 +107,9 @@ test('customer sees the exact store address, in-app pin and Google Maps directio
   await page.getByRole('button', { name: 'Đăng nhập tài khoản', exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.locator('.store-select')).toBeVisible();
-  await expect(page.getByLabel('Chọn cửa hàng', { exact: true })).toHaveValue('');
-  await page.getByLabel('Chọn cửa hàng', { exact: true }).selectOption(stores[0].id);
-  await expect(page.locator('.store-select-copy small')).toHaveText(stores[0].address);
+  await expect(pickupStoreButton(page)).toHaveAccessibleName('Chọn cửa hàng');
+  await choosePickupStore(page, stores[0].name);
+  await expect(pickupStoreButton(page).locator('small')).toHaveText(stores[0].address);
   await page.getByRole('button', { name: `Xem vị trí ${stores[0].name}` }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText(stores[0].address, { exact: true })).toBeVisible();
@@ -127,8 +129,8 @@ test('customer sees the exact store address, in-app pin and Google Maps directio
   );
   await dialog.getByRole('button', { name: 'Đóng' }).click();
 
-  await page.getByLabel('Chọn cửa hàng').selectOption(stores[1].id);
-  await expect(page.locator('.store-select-copy small')).toHaveText(stores[1].address);
+  await choosePickupStore(page, stores[1].name);
+  await expect(pickupStoreButton(page).locator('small')).toHaveText(stores[1].address);
   await page.getByRole('button', { name: `Xem vị trí ${stores[1].name}` }).click();
   await expect(dialog.getByText('Cửa hàng chưa ghim tọa độ.', { exact: false })).toBeVisible();
   await expect(dialog.getByRole('region')).toHaveCount(0);
@@ -148,12 +150,12 @@ test('catalog uses live products and remains usable on mobile', async ({ page })
   );
   await page.goto('/');
   await login(page, 'Khách hàng');
-  await page.getByLabel('Chọn cửa hàng').selectOption({ label: 'ShopGo Demo 2' });
+  await choosePickupStore(page, 'ShopGo Demo 2');
   await expect(page.getByRole('heading', { name: 'Hôm nay, bạn cần gì?' })).toBeVisible();
   await expect(page.locator('.product-card').first()).toBeVisible();
   await page.screenshot({ path: 'test-results/storefront-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByLabel('Chọn cửa hàng', { exact: true })).toBeVisible();
+  await expect(pickupStoreButton(page)).toBeVisible();
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
   ).toBe(true);
@@ -198,12 +200,13 @@ test('create data → checkout → picking → cash → QR handover → inventor
       await page.getByRole('button', { name: 'Xác nhận đăng nhập', exact: true }).click();
       await expect(page.getByRole('dialog')).not.toBeVisible();
       await expect(page).toHaveURL(/\/$/);
-      await page.getByLabel('Chọn cửa hàng', { exact: true }).selectOption({
-        label: 'ShopGo Demo 2',
-      });
+      await choosePickupStore(page, 'ShopGo Demo 2');
       await expect(page.locator('.product-card').first()).toBeVisible();
     } else {
       await login(page, role);
+      if (role !== 'Admin') {
+        await page.getByLabel('Cửa hàng làm việc').selectOption({ label: 'ShopGo Demo 2' });
+      }
     }
     return page;
   }
@@ -214,7 +217,6 @@ test('create data → checkout → picking → cash → QR handover → inventor
     const admin = await account('Admin');
     const adminStoreSelect = admin.getByLabel('Chọn cửa hàng quản trị', { exact: true });
     await adminStoreSelect.selectOption({ label: 'ShopGo Demo 2' });
-    const storeId = await adminStoreSelect.inputValue();
     await admin.getByLabel('Tên sản phẩm', { exact: true }).fill(name);
     await admin.getByLabel('Mã SKU', { exact: true }).fill(`E2E-${stamp}`);
     await admin.getByLabel('Mã vạch', { exact: true }).fill(barcode);
@@ -223,18 +225,19 @@ test('create data → checkout → picking → cash → QR handover → inventor
     await admin.getByRole('button', { name: 'Tạo dữ liệu', exact: true }).click();
     await expect(admin.getByText('Đã lưu dữ liệu thành công.', { exact: false })).toBeVisible();
     const customer = await account('Khách hàng');
-    await customer.getByLabel('Chọn cửa hàng').selectOption(storeId);
     await customer.getByLabel('Tìm sản phẩm').fill(name);
     await expect(customer.getByRole('button', { name: `Thêm ${name}`, exact: true })).toBeVisible();
     await customer.getByRole('button', { name: `Thêm ${name}`, exact: true }).click();
     await expect(customer.getByTestId('cart-count')).toHaveText('1');
     await customer.getByRole('link', { name: /Giỏ hàng/ }).click();
-    await customer.getByRole('link', { name: 'Chọn giờ & đặt hàng', exact: true }).click();
-    await customer.getByRole('radio').first().check();
+    await customer.getByRole('link', { name: 'Tiếp tục đặt hàng', exact: true }).click();
+    await customer.locator('input[name="slot"]').first().check();
     await customer.getByRole('button', { name: 'Xem tổng thanh toán', exact: true }).click();
-    await customer.getByRole('button', { name: 'Xác nhận đặt hàng', exact: true }).click();
+    await customer.getByRole('button', { name: /Đặt đơn & tiếp tục thanh toán cọc/ }).click();
     await expect(customer).toHaveURL(/\/don-hang\/[a-f0-9-]+$/);
     const orderId = new URL(customer.url()).pathname.split('/').pop()!;
+    await customer.getByRole('button', { name: 'Tiếp tục thanh toán', exact: true }).click();
+    await customer.getByRole('button', { name: 'Thanh toán mô phỏng', exact: true }).click();
     await expect(customer.locator('.badge').first()).toContainText('Đã xác nhận');
     const picker = await account('Soạn hàng');
     await picker
@@ -263,7 +266,7 @@ test('create data → checkout → picking → cash → QR handover → inventor
     await expect(
       counter.getByRole('button', { name: 'Xác nhận bàn giao hàng', exact: true }),
     ).toBeDisabled();
-    await counter.getByRole('button', { name: /Xác nhận đã thu/ }).click();
+    await counter.getByRole('button', { name: /Xác nhận đã thu 21\.250/ }).click();
     await counter.getByRole('button', { name: 'Xác nhận bàn giao hàng', exact: true }).click();
     await expect(
       counter.getByRole('heading', { name: 'Đã bàn giao thành công!', exact: true }),
@@ -271,6 +274,7 @@ test('create data → checkout → picking → cash → QR handover → inventor
     await customer.bringToFront();
     await expect(customer.getByText('Túi hàng đã đến tay bạn.', { exact: true })).toBeVisible();
     const manager = await account('Quản lý');
+    await manager.getByRole('button', { name: 'Tồn kho', exact: true }).click();
     await manager.getByLabel('Tìm tồn kho', { exact: true }).fill(name);
     const row = manager.getByRole('row').filter({ hasText: name });
     await expect(row).toBeVisible();

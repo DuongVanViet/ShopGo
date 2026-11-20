@@ -13,7 +13,6 @@ WORKDIR /app
 COPY --from=build /app/package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
-COPY src/database/migrations ./dist/database/migrations
 USER node
 EXPOSE 3001
 CMD ["node", "dist/main.js"]
