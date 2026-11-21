@@ -220,7 +220,11 @@ export function SellerCatalog({
 }) {
   const shop = useShop();
   const categories = useResource<Category[]>(`${base}/catalog/categories`);
-  const products = useResource<Page<ManagedProduct>>(`${base}/catalog/products?limit=100`);
+  const [cursors, setCursors] = useState<string[]>([]);
+  const cursor = cursors.at(-1);
+  const products = useResource<Page<ManagedProduct>>(
+    `${base}/catalog/products?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+  );
   const [categoryId, setCategoryId] = useState('');
   const [createPanel, setCreatePanel] = useState<'category' | 'product' | 'qr' | null>(null);
   const [categoryBusy, setCategoryBusy] = useState(false),
@@ -751,7 +755,7 @@ export function SellerCatalog({
         <div className="panel-heading">
           <div>
             <h2>Sản phẩm đang quản lý</h2>
-            <small>Tối đa 100 sản phẩm mới nhất theo trang hiện tại</small>
+            <small>Trang {cursors.length + 1}</small>
           </div>
           <span className="badge">{products.data?.items.length ?? 0} sản phẩm</span>
         </div>
@@ -876,6 +880,28 @@ export function SellerCatalog({
               </article>
             ))}
           </div>
+        )}
+        {(cursor || products.data?.nextCursor) && (
+          <nav className="row" aria-label="Phân trang sản phẩm cửa hàng">
+            <button
+              type="button"
+              className="button secondary small"
+              disabled={!cursor}
+              onClick={() => setCursors(cursors.slice(0, -1))}
+            >
+              Trang trước
+            </button>
+            <button
+              type="button"
+              className="button secondary small"
+              disabled={!products.data?.nextCursor}
+              onClick={() => {
+                if (products.data?.nextCursor) setCursors([...cursors, products.data.nextCursor]);
+              }}
+            >
+              Trang sau
+            </button>
+          </nav>
         )}
       </div>
 

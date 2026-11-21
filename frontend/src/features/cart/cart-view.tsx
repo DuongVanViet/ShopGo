@@ -23,6 +23,7 @@ import { money } from '@/lib/format';
 import { AccessGate, Empty, ErrorBox, Loading } from '@/components/ui';
 import { ProductArt } from '@/components/product-art';
 import { ProductPrice } from '@/components/product-price';
+import { cartItemNeedsAttention } from '@/lib/cart';
 import { useSelectedVoucher, VoucherPicker } from '@/features/promotions/voucher-picker';
 
 const cartUnitLabels: Record<string, string> = {
@@ -73,7 +74,7 @@ export function CartView() {
     }
   }
   const total = shop.cart?.items.reduce((sum, item) => sum + item.price * item.quantity, 0) ?? 0;
-  const hasStockIssue = shop.cart?.items.some((item) => item.quantity > item.available) ?? false;
+  const hasStockIssue = shop.cart?.items.some(cartItemNeedsAttention) ?? false;
   return (
     <AccessGate>
       <div className="container retail-checkout-page retail-cart-page">
@@ -127,7 +128,11 @@ export function CartView() {
                   {shop.cart.items.map((item) => (
                     <article className="retail-cart-line" key={item.skuId}>
                       <span className="retail-selected-check" aria-hidden="true">
-                        <Check size={16} />
+                        {cartItemNeedsAttention(item) ? (
+                          <TriangleAlert size={16} />
+                        ) : (
+                          <Check size={16} />
+                        )}
                       </span>
                       <div className="retail-cart-art">
                         {item.imageUrl ? (
@@ -148,15 +153,24 @@ export function CartView() {
                         <div className="retail-unit-price">
                           <ProductPrice price={item.price} originalPrice={item.originalPrice} />
                         </div>
-                        {item.quantity > item.available && (
+                        {item.unavailableReason ? (
                           <small className="danger-text">
-                            Hiện chỉ còn {item.available} đơn vị. Vui lòng giảm số lượng.
+                            {item.unavailableReason === 'EXPIRED'
+                              ? 'Sản phẩm đã hết hạn.'
+                              : 'Sản phẩm đã ngừng bán.'}{' '}
+                            Vui lòng xóa khỏi giỏ.
                           </small>
+                        ) : (
+                          item.quantity > item.available && (
+                            <small className="danger-text">
+                              Hiện chỉ còn {item.available} đơn vị. Vui lòng giảm số lượng.
+                            </small>
+                          )
                         )}
                       </div>
                       <div className="quantity retail-cart-quantity">
                         <button
-                          disabled={busy}
+                          disabled={busy || !!item.unavailableReason}
                           aria-label={`Giảm ${item.name}`}
                           onClick={() => void change(item.skuId, item.quantity - 1)}
                         >
@@ -164,7 +178,9 @@ export function CartView() {
                         </button>
                         <span>{item.quantity}</span>
                         <button
-                          disabled={busy || item.quantity >= item.available}
+                          disabled={
+                            busy || !!item.unavailableReason || item.quantity >= item.available
+                          }
                           aria-label={`Tăng ${item.name}`}
                           onClick={() => void change(item.skuId, item.quantity + 1)}
                         >
@@ -191,7 +207,7 @@ export function CartView() {
                       {hasStockIssue ? <TriangleAlert size={15} /> : <Check size={15} />}
                     </span>
                     {hasStockIssue
-                      ? 'Hãy giảm số lượng các sản phẩm đang thiếu tồn kho'
+                      ? 'Kiểm tra các sản phẩm được đánh dấu trong giỏ'
                       : 'Tất cả sản phẩm đã sẵn sàng đặt'}
                   </span>
                   <Link href="/" className="text-button">
@@ -291,7 +307,7 @@ export function CartView() {
                 </div>
                 {hasStockIssue ? (
                   <button className="button wide retail-primary-cta" type="button" disabled>
-                    Điều chỉnh số lượng để tiếp tục
+                    Điều chỉnh giỏ hàng để tiếp tục
                   </button>
                 ) : (
                   <Link className="button wide retail-primary-cta" href="/thanh-toan">

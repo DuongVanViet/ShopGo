@@ -24,6 +24,7 @@ export class OrdersService {
       quoteId: string;
       paymentMethod: PaymentMethod;
       expectedCartVersion: number;
+      expectedStoreId?: string;
     },
     key: string | undefined,
     requestId: string,
@@ -46,6 +47,8 @@ export class OrdersService {
             [quote.cart_id, actor.id],
           ),
         );
+        if (input.expectedStoreId && input.expectedStoreId !== cart.store_id)
+          fail('STORE_CHANGED', 'Báo giá thuộc cửa hàng khác. Vui lòng lấy báo giá mới.');
         expected(cart, input.expectedCartVersion);
         expected(cart, quote.cart_version);
         const voucher = quote.voucher_id

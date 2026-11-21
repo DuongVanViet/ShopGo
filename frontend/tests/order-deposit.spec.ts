@@ -268,6 +268,7 @@ test('customer defaults to the rounded 15% deposit, can choose full online, and 
   await expect(page.getByText('Sản phẩm kiểm thử đặt cọc', { exact: true })).toBeVisible();
 
   await page.getByRole('radio', { name: /Còn 19 suất/ }).check();
+  await expect(page.locator('.retail-slot-option small')).toHaveText(/16[\/-]11[\/-]2026/);
   await expect(page.getByRole('radio', { name: /Đặt cọc 15% online/ })).toBeChecked();
   await page.getByRole('button', { name: /Xem tổng thanh toán/ }).click();
   await expect(
@@ -330,6 +331,15 @@ test('customer defaults to the rounded 15% deposit, can choose full online, and 
     0,
   );
 
+  currentOrder = depositOrder({
+    status: 'READY',
+    paymentStatus: 'PAID',
+    amountPaid: total,
+    amountRemaining: 0,
+  });
+  await page.getByRole('button', { name: 'Cập nhật trạng thái', exact: true }).click();
+  await expect(page.getByLabel('Chi tiết tiền cọc').getByText(/^0\s*₫$/)).toBeVisible();
+  await expect(fulfillment).toContainText('Bạn không cần thanh toán thêm tại quầy.');
   currentOrder = depositOrder({
     status: 'CONFIRMED',
     paymentStatus: 'PAID',

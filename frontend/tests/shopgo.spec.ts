@@ -175,7 +175,9 @@ test('unavailable backend is explicit and does not fabricate products', async ({
   await expect(page.locator('.product-card')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Thử lại', exact: true }).first()).toBeVisible();
 });
-test('create data → checkout → picking → cash → QR handover → inventory', async ({ browser }) => {
+test('checkout, employee chat, QR chat deletion, verified review and inventory', async ({
+  browser,
+}) => {
   test.skip(
     process.env.E2E_ALLOW_MUTATIONS !== '1',
     'Requires explicit E2E_ALLOW_MUTATIONS=1 and a local test database.',
@@ -260,6 +262,37 @@ test('create data → checkout → picking → cash → QR handover → inventor
     ).toBeVisible();
     const token = await customer.getByTestId('pickup-token').textContent();
     expect(token?.length).toBeGreaterThan(32);
+    await expect(
+      customer.getByRole('heading', { name: 'Đánh giá cửa hàng', exact: true }),
+    ).toHaveCount(0);
+    await customer.setViewportSize({ width: 390, height: 844 });
+    const chatQuestion = `Tôi có thể đến lấy đơn ${stamp} chưa?`;
+    const chatReply = 'Đơn đã sẵn sàng, mời bạn đến nhận.';
+    await customer.getByRole('link', { name: 'Chat với cửa hàng', exact: true }).click();
+    const chat = customer.getByRole('region', { name: 'Tin nhắn trong cuộc trò chuyện' });
+    await expect(chat.getByRole('link', { name: /^Đơn SG-/ })).toHaveAttribute(
+      'href',
+      `/don-hang/${orderId}`,
+    );
+    await chat.getByRole('textbox', { name: 'Nội dung tin nhắn' }).fill(chatQuestion);
+    await chat.getByRole('button', { name: 'Gửi', exact: true }).click();
+    await expect(chat.getByText(chatQuestion, { exact: true })).toBeVisible();
+    await picker.getByRole('link', { name: 'Tin nhắn', exact: true }).click();
+    const pickerInbox = picker.getByRole('region', { name: 'Cuộc trò chuyện', exact: true });
+    const conversation = pickerInbox.getByRole('button', {
+      name: new RegExp(chatQuestion.slice(0, -1)),
+    });
+    await expect(conversation.getByText('Mới', { exact: true })).toBeVisible();
+    await conversation.click();
+    const staffChat = picker.getByRole('region', { name: 'Tin nhắn trong cuộc trò chuyện' });
+    await expect(staffChat.getByText(chatQuestion, { exact: true })).toBeVisible();
+    await staffChat.getByRole('textbox', { name: 'Nội dung tin nhắn' }).fill(chatReply);
+    await staffChat.getByRole('button', { name: 'Gửi', exact: true }).click();
+    await expect(staffChat.getByText(chatReply, { exact: true })).toBeVisible();
+    await customer.bringToFront();
+    await expect(chat.getByText(chatReply, { exact: true })).toBeVisible();
+    await customer.screenshot({ path: 'test-results/order-chat-mobile.png' });
+
     const counter = await account('Quầy nhận');
     await counter.getByLabel('Mã nhận hàng', { exact: true }).fill(token!);
     await counter.getByRole('button', { name: 'Kiểm tra đơn hàng', exact: true }).click();
@@ -272,8 +305,56 @@ test('create data → checkout → picking → cash → QR handover → inventor
       counter.getByRole('heading', { name: 'Đã bàn giao thành công!', exact: true }),
     ).toBeVisible();
     await customer.bringToFront();
+    await expect(
+      chat.getByText('Cuộc trò chuyện đã kết thúc. Tin nhắn đã được xóa.'),
+    ).toBeVisible();
+    await expect(chat.getByText(chatReply, { exact: true })).toHaveCount(0);
+    await expect(chat.getByRole('textbox')).toHaveCount(0);
+    await chat.getByRole('link', { name: 'Hộp thư', exact: true }).click();
+    await expect(customer.getByText('Chưa có cuộc trò chuyện.')).toBeVisible();
+    await picker.bringToFront();
+    await expect(staffChat.getByRole('textbox')).toHaveCount(0);
+    await expect(pickerInbox.getByText(chatReply, { exact: true })).toHaveCount(0);
+    await customer.bringToFront();
+    await customer.getByRole('link', { name: 'Đơn của tôi', exact: true }).click();
+    await customer
+      .locator('.retail-order-card')
+      .filter({ hasText: orderId.slice(0, 8).toUpperCase() })
+      .click();
     await expect(customer.getByText('Túi hàng đã đến tay bạn.', { exact: true })).toBeVisible();
+    await expect(
+      customer.getByRole('link', { name: 'Chat với cửa hàng', exact: true }),
+    ).toHaveCount(0);
+    const comment = `Nhận hàng đúng giờ ${stamp}`;
+    const review = customer.getByRole('region', { name: 'Đánh giá cửa hàng', exact: true });
+    await expect(review.getByRole('button', { name: 'Gửi đánh giá' })).toBeDisabled();
+    await review.getByRole('radio', { name: '5 sao', exact: true }).check();
+    await review.getByLabel('Nhận xét (tùy chọn)').fill(comment);
+    await review.getByRole('button', { name: 'Gửi đánh giá' }).click();
+    await expect(review.getByText(comment, { exact: true })).toBeVisible();
+    await review.getByRole('button', { name: 'Sửa đánh giá' }).click();
+    await expect(review.getByRole('radio', { name: '5 sao', exact: true })).toBeChecked();
+    await review.getByRole('radio', { name: '4 sao', exact: true }).check();
+    await review.getByRole('button', { name: 'Lưu đánh giá' }).click();
+    await expect(review.getByRole('img', { name: '4 trên 5 sao' })).toBeVisible();
+    await customer.getByRole('link', { name: 'Tiếp tục mua sắm' }).click();
+    const summary = customer.getByRole('region', { name: 'Đánh giá cửa hàng', exact: true });
+    await expect(summary).toContainText('4,0/5');
+    await expect(summary).toContainText('1 lượt đánh giá');
+    await summary.getByRole('button', { name: 'Xem đánh giá', exact: true }).click();
+    const publicReviews = customer.getByRole('dialog', { name: 'Đánh giá về ShopGo Demo 2' });
+    await expect(publicReviews.getByText(comment, { exact: true })).toBeVisible();
+    await expect(publicReviews.getByText('Khách đã nhận hàng', { exact: true })).toBeVisible();
+    await customer.screenshot({ path: 'test-results/store-reviews-mobile.png' });
+    await publicReviews.getByRole('button', { name: 'Đóng', exact: true }).click();
     const manager = await account('Quản lý');
+    await manager.getByRole('button', { name: 'Tin nhắn', exact: true }).click();
+    await expect(manager.getByText('Chưa có cuộc trò chuyện.')).toBeVisible();
+    await manager.getByRole('button', { name: 'Đánh giá', exact: true }).click();
+    await manager.getByRole('button', { name: 'Xem đánh giá', exact: true }).click();
+    const managerReviews = manager.getByRole('dialog', { name: 'Đánh giá về ShopGo Demo 2' });
+    await expect(managerReviews.getByText(comment, { exact: true })).toBeVisible();
+    await managerReviews.getByRole('button', { name: 'Đóng', exact: true }).click();
     await manager.getByRole('button', { name: 'Tồn kho', exact: true }).click();
     await manager.getByLabel('Tìm tồn kho', { exact: true }).fill(name);
     const row = manager.getByRole('row').filter({ hasText: name });

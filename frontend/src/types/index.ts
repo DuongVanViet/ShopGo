@@ -79,6 +79,7 @@ export interface User {
   memberships: { storeId: string; role: Role }[];
 }
 export interface CartItem {
+  unavailableReason?: 'DISCONTINUED' | 'EXPIRED' | null;
   originalPrice?: number;
   skuId: string;
   name: string;
@@ -140,6 +141,14 @@ export type OrderStatus =
   | 'COMPLETED'
   | 'CANCELLED'
   | 'EXPIRED';
+export interface StoreReview {
+  id: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface OrderItem {
   originalUnitPrice?: number | null;
   id: string;
@@ -169,6 +178,7 @@ export interface Order {
   amountPaid?: number;
   amountRefunded?: number;
   amountRemaining?: number;
+  canCollectCash?: boolean;
   total: number;
   subtotal: number;
   discount: number;

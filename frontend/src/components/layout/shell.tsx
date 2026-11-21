@@ -12,6 +12,7 @@ import {
   Heart,
   Home,
   LogOut,
+  MessageCircle,
   Moon,
   PackageSearch,
   Search,
@@ -31,6 +32,7 @@ import { AuthDialog } from '../auth-dialog';
 function NavigationIcon({ href }: { href: string }) {
   if (href === '/') return <Home size={18} aria-hidden="true" />;
   if (href === '/don-hang') return <PackageSearch size={18} aria-hidden="true" />;
+  if (href === '/tin-nhan') return <MessageCircle size={18} aria-hidden="true" />;
   if (href === '/soan-hang') return <Boxes size={18} aria-hidden="true" />;
   if (href === '/nhan-hang') return <ClipboardList size={18} aria-hidden="true" />;
   return <Store size={18} aria-hidden="true" />;
@@ -47,7 +49,9 @@ export function Shell({ children }: { children: ReactNode }) {
   const total = shop.cart?.items.reduce((n, item) => n + item.quantity, 0) ?? 0;
   const canChoosePickupStore = isCustomerUser(shop.user);
   const customerExperience = !shop.user || canChoosePickupStore;
-  const operationalPage = ['/soan-hang', '/nhan-hang', '/quan-ly'].includes(path);
+  const operationalPage =
+    ['/soan-hang', '/nhan-hang', '/quan-ly'].includes(path) ||
+    (path === '/tin-nhan' && !customerExperience);
   const homeHref = shop.user ? landingForUser(shop.user) : '/';
   const navigation = navigationForUser(shop.user, !!shop.store);
   useEffect(() => {

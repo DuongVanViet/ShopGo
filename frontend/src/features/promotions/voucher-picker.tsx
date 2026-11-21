@@ -26,7 +26,6 @@ interface EvaluatedVoucher extends Voucher {
 interface Preview extends Page<EvaluatedVoucher> {
   subtotal: number;
   cartVersion: number;
-  recommended: EvaluatedVoucher | null;
 }
 export function voucherLabel(voucher: Voucher) {
   return `Giảm ${voucher.discountType === 'PERCENT' ? `${voucher.value}%` : money(voucher.value)}${voucher.maxDiscount ? `, tối đa ${money(voucher.maxDiscount)}` : ''}`;
@@ -67,107 +66,70 @@ export function useSelectedVoucher() {
   };
 }
 
-function VoucherChoices({ onSelect }: { onSelect: (code: string) => void }) {
+function VoucherLookup({ onSelect }: { onSelect: (code: string) => void }) {
   const shop = useShop();
   const [input, setInput] = useState('');
   const [code, setCode] = useState('');
-  const [cursor, setCursor] = useState('');
-  const offers = useResource<Preview>(
-    shop.cart && shop.store
-      ? `/cart/vouchers?${query({ storeId: shop.store.id, cartVersion: shop.cart.version, code, cursor, limit: 10 })}`
+  const lookup = useResource<Preview>(
+    code && shop.cart && shop.store
+      ? `/cart/vouchers?${query({ storeId: shop.store.id, cartVersion: shop.cart.version, code })}`
       : null,
-    15000,
   );
-  const recommended = offers.data?.recommended;
-  const items = offers.data?.items ?? [];
-  const choices =
-    !code && recommended && !items.some((v) => v.id === recommended.id)
-      ? [recommended, ...items]
-      : items;
+  const voucher = lookup.data?.items[0];
   return (
     <div className="voucher-choices">
       <form
         className="voucher-search"
         onSubmit={(e) => {
           e.preventDefault();
-          setCursor('');
-          setCode(input.trim().toUpperCase());
+          const submitted = input.trim().toUpperCase();
+          if (submitted === code) lookup.refresh();
+          else setCode(submitted);
         }}
       >
         <input
           aria-label="Nhập mã giảm giá"
-          placeholder="Nhập mã giảm giá"
+          placeholder="Nhập mã bạn có"
           value={input}
+          autoComplete="off"
           maxLength={40}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            setInput(e.target.value);
+            setCode('');
+          }}
         />
-        <button className="button secondary" type="submit">
-          Tìm mã
+        <button className="button secondary" type="submit" disabled={!input.trim()}>
+          Kiểm tra mã
         </button>
       </form>
-      {code && (
-        <button
-          type="button"
-          className="text-button"
-          onClick={() => {
-            setCode('');
-            setInput('');
-            setCursor('');
-          }}
-        >
-          Xem các mã của cửa hàng
-        </button>
-      )}
-      <ErrorBox error={offers.error} retry={offers.refresh} />
-      {offers.loading && !offers.data && <Loading />}
-      {!offers.loading && !offers.error && !choices.length && (
-        <p className="muted">
-          {code ? 'Không tìm thấy mã tại cửa hàng này.' : 'Cửa hàng chưa có mã giảm giá khả dụng.'}
-        </p>
-      )}
-      {choices.map((v) => (
-        <article className={`voucher-ticket${v.eligible ? '' : ' unavailable'}`} key={v.id}>
+      <ErrorBox error={lookup.error} retry={lookup.refresh} />
+      {lookup.loading && !lookup.data && <Loading label="Đang kiểm tra mã…" />}
+      {lookup.data && !voucher && <p role="status">Không tìm thấy mã tại cửa hàng này.</p>}
+      {voucher && (
+        <article className={`voucher-ticket${voucher.eligible ? '' : ' unavailable'}`}>
           <TicketPercent size={25} aria-hidden="true" />
           <div>
-            <strong>{v.code}</strong>
-            <p>{voucherLabel(v)}</p>
+            <strong>{voucher.code}</strong>
+            <p>{voucherLabel(voucher)}</p>
             <small>
-              Đơn từ {money(v.minTotal)} · Hết hạn {dateTime(v.validUntil)}
+              Đơn từ {money(voucher.minTotal)} · Hết hạn {dateTime(voucher.validUntil)}
             </small>
-            {v.eligible ? (
-              <p className="voucher-saving">
-                Tiết kiệm {money(v.discountAmount)}
-                {recommended?.id === v.id ? ' · Có lợi nhất cho giỏ hàng' : ''}
-              </p>
+            {voucher.eligible ? (
+              <p className="voucher-saving">Tiết kiệm {money(voucher.discountAmount)}</p>
             ) : (
-              <p className="muted">{reasonText(v)}</p>
+              <p className="muted">{reasonText(voucher)}</p>
             )}
           </div>
           <button
             type="button"
             className="button secondary small"
-            disabled={!v.eligible}
-            aria-label={`Dùng mã ${v.code}`}
-            onClick={() => onSelect(v.code)}
+            disabled={!voucher.eligible}
+            aria-label={`Dùng mã ${voucher.code}`}
+            onClick={() => onSelect(voucher.code)}
           >
             Dùng mã
           </button>
         </article>
-      ))}
-      {offers.data?.nextCursor && (
-        <button
-          type="button"
-          className="button secondary"
-          disabled={offers.loading}
-          onClick={() => setCursor(offers.data!.nextCursor!)}
-        >
-          Xem thêm mã
-        </button>
-      )}
-      {cursor && (
-        <button type="button" className="text-button" onClick={() => setCursor('')}>
-          Về đầu danh sách
-        </button>
       )}
     </div>
   );
@@ -197,8 +159,8 @@ export function VoucherPicker({
         onClick={() => setOpen(true)}
       >
         <TicketPercent size={21} aria-hidden="true" />
-        <span>{shop.voucherCode || 'Chọn mã giảm giá'}</span>
-        <span>{shop.voucherCode ? 'Đổi mã' : 'Chọn mã'}</span>
+        <span>{shop.voucherCode || 'Mã giảm giá'}</span>
+        <span>{shop.voucherCode ? 'Đổi mã' : 'Nhập mã'}</span>
       </button>
       {shop.voucherCode && (
         <>
@@ -223,60 +185,9 @@ export function VoucherPicker({
           </button>
         </>
       )}
-      <Modal open={open && !disabled} onClose={() => setOpen(false)} title="Chọn mã giảm giá">
-        <VoucherChoices onSelect={choose} />
+      <Modal open={open && !disabled} onClose={() => setOpen(false)} title="Nhập mã giảm giá">
+        <VoucherLookup key={shop.store?.id} onSelect={choose} />
       </Modal>
     </div>
-  );
-}
-export function StoreOffers({ storeId }: { storeId: string }) {
-  const [cursor, setCursor] = useState('');
-  const offers = useResource<Page<Voucher>>(
-    `/stores/${storeId}/vouchers?${query({ limit: 3, cursor })}`,
-    30000,
-  );
-  return (
-    <section id="uu-dai" tabIndex={-1} className="store-vouchers" aria-label="Ưu đãi của cửa hàng">
-      <h2>
-        <TicketPercent size={21} />
-        Ưu đãi tại cửa hàng
-      </h2>
-      <ErrorBox error={offers.error} retry={offers.refresh} />
-      {offers.loading && !offers.data && <Loading label="Đang tải ưu đãi…" />}
-      <div className="store-voucher-list">
-        {offers.data?.items.map((v) => (
-          <article className="voucher-ticket" key={v.id}>
-            <div>
-              <strong>{v.code}</strong>
-              <p>{voucherLabel(v)}</p>
-              <small>
-                Đơn từ {money(v.minTotal)} · Đến {dateTime(v.validUntil)}
-              </small>
-            </div>
-          </article>
-        ))}
-      </div>
-      {offers.data && (
-        <p className="muted">
-          {offers.data.items.length
-            ? 'Chọn mã trong giỏ hàng để xem số tiền được giảm.'
-            : 'Cửa hàng chưa có mã giảm giá khả dụng.'}
-        </p>
-      )}
-      {offers.data?.nextCursor && (
-        <button
-          type="button"
-          className="text-button"
-          onClick={() => setCursor(offers.data!.nextCursor!)}
-        >
-          Xem thêm ưu đãi
-        </button>
-      )}
-      {cursor && (
-        <button type="button" className="text-button" onClick={() => setCursor('')}>
-          Về đầu danh sách
-        </button>
-      )}
-    </section>
   );
 }

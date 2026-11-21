@@ -17,19 +17,27 @@ import {
 import { useShop } from '@/store/shop';
 import { useResource } from '@/hooks/use-resource';
 import { api, ApiError } from '@/lib/api';
-import { dateTime, money, time } from '@/lib/format';
+import { calendarDate, money, time } from '@/lib/format';
 import type { Order, PaymentBreakdown, PaymentMethod, Quote, Slot } from '@/types';
 import { AccessGate, Empty, ErrorBox, Loading, PageTitle } from '@/components/ui';
 import { useSelectedVoucher, VoucherPicker } from '@/features/promotions/voucher-picker';
 import { ProductPrice } from '@/components/product-price';
+import { cartItemNeedsAttention } from '@/lib/cart';
 
 export function CheckoutView() {
+  const { store, user, cart } = useShop();
+  return <CheckoutForm key={JSON.stringify([user?.id, store?.id, cart?.id, cart?.version])} />;
+}
+
+function CheckoutForm() {
   const shop = useShop(),
     router = useRouter();
   const slots = useResource<Slot[]>(shop.store ? `/stores/${shop.store.id}/slots` : null);
   const selectedVoucher = useSelectedVoucher();
   const [slotId, setSlotId] = useState(''),
-    [quote, setQuote] = useState<Quote | null>(null),
+    [received, setQuote] = useState<{ value: Quote; slotId: string; voucherCode: string } | null>(
+      null,
+    ),
     [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PAY_AT_PICKUP'),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<unknown>(null),
@@ -39,33 +47,34 @@ export function CheckoutView() {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
-  useEffect(() => {
-    setQuote(null);
-    setSlotId('');
-    setPaymentMethod('PAY_AT_PICKUP');
-    setUncertain(false);
-    setError(null);
-  }, [shop.store?.id, shop.user?.id, shop.cart?.version]);
+  const quote =
+    received &&
+    received.slotId === slotId &&
+    received.voucherCode === shop.voucherCode &&
+    shop.cart?.storeId === shop.store?.id &&
+    received.value.cartVersion === shop.cart?.version
+      ? received.value
+      : null;
+  const blockedCart = shop.cart?.items.some(cartItemNeedsAttention);
   useEffect(() => {
     setQuote(null);
   }, [shop.voucherCode]);
   async function getQuote() {
-    if (!shop.cart) return;
+    if (!shop.cart || shop.cart.storeId !== shop.store?.id || !slotId || blockedCart) return;
     setBusy(true);
     setError(null);
     try {
-      setQuote(
-        await api<Quote>('/checkout/quotes', {
-          method: 'POST',
-          token: shop.token,
-          body: {
-            cartId: shop.cart.id,
-            cartVersion: shop.cart.version,
-            slotId,
-            ...(shop.voucherCode ? { voucherCode: shop.voucherCode } : {}),
-          },
-        }),
-      );
+      const value = await api<Quote>('/checkout/quotes', {
+        method: 'POST',
+        token: shop.token,
+        body: {
+          cartId: shop.cart.id,
+          cartVersion: shop.cart.version,
+          slotId,
+          ...(shop.voucherCode ? { voucherCode: shop.voucherCode } : {}),
+        },
+      });
+      setQuote({ value, slotId, voucherCode: shop.voucherCode });
     } catch (e) {
       setError(e);
       setQuote(null);
@@ -74,7 +83,7 @@ export function CheckoutView() {
     }
   }
   async function placeOrder() {
-    if (!quote) return;
+    if (!quote || !shop.store || !shop.cart || (blockedCart && !uncertain)) return;
     setBusy(true);
     setError(null);
     try {
@@ -85,7 +94,8 @@ export function CheckoutView() {
         body: {
           quoteId: quote.id,
           paymentMethod,
-          expectedCartVersion: quote.cartVersion,
+          expectedCartVersion: shop.cart.version,
+          expectedStoreId: shop.store.id,
         },
       });
       shop.notice(
@@ -203,7 +213,7 @@ export function CheckoutView() {
                             {time(slot.startsAt)} – {time(slot.endsAt)}
                           </b>
                           <small>
-                            {dateTime(slot.startsAt).split(' ')[0]} · Còn {slot.available} suất
+                            {calendarDate(slot.startsAt)} · Còn {slot.available} suất
                           </small>
                         </label>
                       ))}
@@ -296,10 +306,15 @@ export function CheckoutView() {
                 onChange={() => setQuote(null)}
               />
 
+              {blockedCart && (
+                <p className="warning-note">
+                  Có sản phẩm cần điều chỉnh. <Link href="/gio-hang">Kiểm tra giỏ hàng</Link>
+                </p>
+              )}
               {(!quote || (expired && !uncertain)) && (
                 <button
                   className="button wide retail-quote-button"
-                  disabled={!slotId || busy || uncertain}
+                  disabled={!slotId || busy || uncertain || blockedCart}
                   onClick={() => void getQuote()}
                 >
                   {expired ? 'Cập nhật báo giá' : 'Xem tổng thanh toán'} <ArrowRight size={16} />
@@ -345,7 +360,7 @@ export function CheckoutView() {
                   </small>
                   <button
                     className="button wide retail-primary-cta"
-                    disabled={busy || (expired && !uncertain)}
+                    disabled={busy || ((expired || blockedCart) && !uncertain)}
                     onClick={() => void placeOrder()}
                   >
                     {busy

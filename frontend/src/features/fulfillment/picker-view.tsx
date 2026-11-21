@@ -1,6 +1,14 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Check, CheckCircle2, ClipboardList, RefreshCw, ScanLine } from 'lucide-react';
+import {
+  Check,
+  CheckCircle2,
+  ClipboardList,
+  MessageCircle,
+  RefreshCw,
+  ScanLine,
+} from 'lucide-react';
 import { useShop } from '@/store/shop';
 import { useResource } from '@/hooks/use-resource';
 import { api } from '@/lib/api';
@@ -76,16 +84,21 @@ export function PickerView() {
           title="Soạn từng túi, trọn từng món."
           subtitle="Nhận đơn, kiểm tra mã hàng và xác nhận khi đã soạn đủ."
           action={
-            <button
-              className="button secondary small"
-              onClick={() => {
-                list.refresh();
-                detail.refresh();
-              }}
-            >
-              <RefreshCw size={15} />
-              Cập nhật
-            </button>
+            <div className="row chat-page-actions">
+              <Link href="/tin-nhan" className="button secondary small">
+                <MessageCircle size={16} /> Tin nhắn
+              </Link>
+              <button
+                className="button secondary small"
+                onClick={() => {
+                  list.refresh();
+                  detail.refresh();
+                }}
+              >
+                <RefreshCw size={15} />
+                Cập nhật
+              </button>
+            </div>
           }
         />
         <div className="filters">

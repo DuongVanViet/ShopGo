@@ -32,6 +32,10 @@ import { HealthController } from './health.controller';
 import { JobsService } from './jobs/jobs.service';
 import { PromotionsController } from './modules/promotions/promotions.controller';
 import { PromotionsService } from './modules/promotions/promotions.service';
+import { StoreReviewsController } from './modules/stores/store-reviews.controller';
+import { StoreReviewsService } from './modules/stores/store-reviews.service';
+import { StoreChatController } from './modules/chat/store-chat.controller';
+import { StoreChatService } from './modules/chat/store-chat.service';
 
 @Global()
 @Module({ providers: [{ provide: ENV, useFactory: loadEnv }, Db], exports: [ENV, Db] })
@@ -46,8 +50,13 @@ class AuthModule {}
 class CatalogModule {}
 @Module({ controllers: [CartController], providers: [CartService], exports: [CartService] })
 class CartModule {}
-@Module({ controllers: [OrdersController], providers: [OrdersService] })
+@Module({
+  controllers: [OrdersController, StoreReviewsController],
+  providers: [OrdersService, StoreReviewsService],
+})
 class OrdersModule {}
+@Module({ controllers: [StoreChatController], providers: [StoreChatService] })
+class StoreChatModule {}
 @Module({ controllers: [FulfillmentController], providers: [FulfillmentService] })
 class FulfillmentModule {}
 @Module({ controllers: [PaymentsController], providers: [PaymentsService] })
@@ -74,6 +83,7 @@ class AiGatewayModule {}
     CatalogModule,
     CartModule,
     OrdersModule,
+    StoreChatModule,
     FulfillmentModule,
     PaymentsModule,
     InventoryModule,

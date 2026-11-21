@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Db, one, rows } from '../../database/db';
 import { fail, must } from '../../common/errors';
 import { uuid } from '../../common/validation';
-import { storePriceFields } from './store-price';
+import { storePrice, storePriceFields } from './store-price';
 
 const accentGroups = [
   ['àáạảãâầấậẩẫăằắặẳẵ', 'a'],
@@ -159,7 +159,7 @@ export class CatalogService {
   }
   async products(
     storeId: string,
-    input: { q?: string; categoryId?: string; inStock?: boolean; limit: number; cursor?: string },
+    input: DiscoveryInput & { discountedOnly?: boolean },
     skuId?: string,
   ) {
     must(
@@ -182,6 +182,7 @@ export class CatalogService {
       translate(lower(concat_ws(' ',s.name,s.code,s.barcode,p.description,c.name)),$8,$9)
         LIKE '%'||translate(lower($2),$8,$9)||'%')
       AND ($3::uuid IS NULL OR p.category_id=$3) AND (NOT $4::boolean OR b.on_hand>b.reserved)
+      AND (NOT $10::boolean OR (${storePrice}) < ss.price)
       AND ($5::uuid IS NULL OR s.id>$5) AND ($6::uuid IS NULL OR s.id=$6) ORDER BY s.id LIMIT $7`,
       [
         storeId,
@@ -193,6 +194,7 @@ export class CatalogService {
         input.limit + 1,
         accentSource,
         accentTarget,
+        input.discountedOnly ?? false,
       ],
     );
     return skuId ? must(items[0]) : paginate(items, input.limit);

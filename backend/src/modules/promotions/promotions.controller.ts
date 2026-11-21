@@ -15,7 +15,6 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { Actor, ApiRequest, CurrentActor } from '../../common/context';
 import { id, money, pageSchema, parse, uuid, version } from '../../common/validation';
-import { Public } from '../auth/auth.guard';
 import { PromotionsService } from './promotions.service';
 const inputSchema = z
   .object({
@@ -75,21 +74,16 @@ export class PromotionsController {
       request.requestId,
     );
   }
-  @Public()
-  @Get('stores/:storeId/vouchers')
-  offers(@Param('storeId') storeId: string, @Query() query: unknown) {
-    return this.promotions.offers(id(storeId), parse(pageSchema.strict(), query));
-  }
   @Get('cart/vouchers')
   @Header('Cache-Control', 'private, no-store')
   preview(@CurrentActor() actor: Actor, @Query() query: unknown) {
     return this.promotions.preview(
       actor,
       parse(
-        pageSchema
-          .extend({
+        z
+          .object({
             storeId: uuid,
-            code: z.string().trim().min(1).max(40).optional(),
+            code: z.string().trim().min(1).max(40),
             cartVersion: z.coerce.number().int().positive().optional(),
           })
           .strict(),

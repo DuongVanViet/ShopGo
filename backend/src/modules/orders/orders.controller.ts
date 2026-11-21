@@ -24,6 +24,7 @@ export class OrdersController {
             quoteId: uuid,
             paymentMethod: z.enum(['ONLINE', 'PAY_AT_PICKUP']),
             expectedCartVersion: version,
+            expectedStoreId: uuid.optional(),
           })
           .strict(),
         body,

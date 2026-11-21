@@ -89,7 +89,7 @@ export function PromotionManagement({ base }: { base: string }) {
       <div className="panel-heading">
         <h2>
           <TicketPercent size={21} />
-          Khuyến mãi của cửa hàng
+          Mã giảm giá riêng của cửa hàng
         </h2>
         <button
           type="button"

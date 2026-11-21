@@ -32,7 +32,7 @@ test('store manager creates and pauses a voucher; customer pays discounted depos
   const store = me.ownedStores[0];
   const categoryResponse = await request.post(`/api/v1/stores/${store.id}/catalog/categories`, {
     headers: { ...headers, 'Idempotency-Key': crypto.randomUUID() },
-    data: { name: 'Thực phẩm', slug: `food-${stamp}` },
+    data: { name: `Thực phẩm ${stamp}`, slug: `food-${stamp}` },
   });
   expect(categoryResponse.ok()).toBeTruthy();
   const category = (await categoryResponse.json()).data;
@@ -112,20 +112,33 @@ test('store manager creates and pauses a voucher; customer pays discounted depos
     await customer.getByLabel('Mật khẩu', { exact: true }).fill(password);
     await customer.getByRole('button', { name: 'Đăng ký tài khoản', exact: true }).click();
     await expect(customer).toHaveURL(/\/$/);
+    await customer.getByLabel('Danh mục sản phẩm', {exact: true})
+      .getByRole('button', {name: category.name, exact: true}).click();
+    await expect(customer.locator('.product-card')).toHaveCount(1);
+    await expect(customer.locator('.product-card')).toContainText(productName);
     await choosePickupStore(customer, storeName);
     await expect(customer.locator('.product-card del')).toHaveText('300.000 ₫');
     await expect(customer.locator('.product-card .product-prices strong')).toHaveText('250.000 ₫');
     await customer.screenshot({ path: 'test-results/product-discount-mobile.png', fullPage: true });
-    await expect(customer.getByRole('region', { name: 'Ưu đãi của cửa hàng' })).toContainText(code);
-    await customer.getByRole('button', { name: `Thêm ${productName}`, exact: true }).click();
+    const offers = customer.getByRole('region', { name: 'Ưu đãi của cửa hàng' });
+    await expect(offers.locator('del')).toHaveText('300.000 ₫');
+    await expect(offers.locator('.product-prices strong')).toHaveText('250.000 ₫');
+    await expect(customer.locator('main')).not.toContainText(code);
+    await offers.getByRole('button', { name: new RegExp(productName) }).click();
+    const productDetail = customer.getByRole('dialog', { name: productName });
+    await productDetail.getByRole('button', { name: 'Thêm vào giỏ', exact: true }).click();
+    await productDetail.getByRole('button', { name: 'Đóng', exact: true }).click();
     await expect(customer.getByTestId('cart-count')).toHaveText('1');
     await customer.locator('a.cart-button').click();
     await expect(customer.locator('.retail-cart-copy del')).toHaveText('300.000 ₫');
-    await customer.getByRole('button', { name: /Chọn mã giảm giá/ }).click();
-    const picker = customer.getByRole('dialog', { name: 'Chọn mã giảm giá' });
-    await expect(picker).toContainText('Có lợi nhất cho giỏ hàng');
+    await customer.getByRole('button', { name: /Mã giảm giá Nhập mã/ }).click();
+    const picker = customer.getByRole('dialog', { name: 'Nhập mã giảm giá' });
+    await expect(picker.locator('.voucher-ticket')).toHaveCount(0);
+    await picker.getByLabel('Nhập mã giảm giá', { exact: true }).fill(code.slice(0, -1));
+    await picker.getByRole('button', { name: 'Kiểm tra mã', exact: true }).click();
+    await expect(picker.getByRole('status')).toHaveText('Không tìm thấy mã tại cửa hàng này.');
     await picker.getByLabel('Nhập mã giảm giá').fill(code.toLowerCase());
-    await picker.getByRole('button', { name: 'Tìm mã', exact: true }).click();
+    await picker.getByRole('button', { name: 'Kiểm tra mã', exact: true }).click();
     await expect(picker.locator('.voucher-ticket')).toHaveCount(1);
     await customer.screenshot({ path: 'test-results/promotion-vouchers-mobile.png' });
     await picker.getByRole('button', { name: `Dùng mã ${code}`, exact: true }).click();

@@ -101,9 +101,12 @@ async function mockCatalog(page: Page) {
         return fulfill(store);
       }
       if (path === `/stores/${store.id}/categories` && method === 'GET') return fulfill([]);
-      if (path === `/stores/${store.id}/vouchers` && method === 'GET')
-        return fulfill({ items: [], nextCursor: null });
+      if (path === `/stores/${store.id}/reviews` && method === 'GET') {
+        return fulfill({ items: [], nextCursor: null, summary: { average: null, count: 0 } });
+      }
       if (path === `/stores/${store.id}/products` && method === 'GET') {
+        if (url.searchParams.get('discountedOnly') === 'true')
+          return fulfill({ items: [], nextCursor: null });
         if (store.id === stores[1].id) {
           storeBRequests += 1;
           lastStoreBQuery = url.searchParams.get('q') ?? '';
@@ -169,7 +172,7 @@ test('shopping cards open store selection, focus their sections and link to cust
   await picker.getByRole('button', { name: stores[0].name, exact: false }).click();
   await expect(picker).not.toBeVisible();
   await expect(page.getByRole('region', { name: 'Ưu đãi của cửa hàng' })).toContainText(
-    'Cửa hàng chưa có mã giảm giá khả dụng.',
+    'Cửa hàng chưa có sản phẩm đang giảm giá.',
   );
   await expect(page.locator('#uu-dai')).toBeFocused();
   await page

@@ -18,7 +18,9 @@ export function navigationForUser(
   user: User | null | undefined,
   hasOperationalStore = true,
 ): NavigationItem[] {
-  if (!user || isCustomerUser(user)) return customerNavigation;
+  if (!user) return customerNavigation;
+  if (isCustomerUser(user))
+    return [...customerNavigation, { href: '/tin-nhan', label: 'Tin nhắn' }];
   const roles = new Set(user.memberships.map((membership) => membership.role));
   const manager = user.accountType === 'SELLER' || roles.has('MANAGER');
   const items: NavigationItem[] = [];

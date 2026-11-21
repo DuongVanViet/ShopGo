@@ -12,6 +12,8 @@ import { SellerLocationLink } from '@/features/auth/seller-location';
 import { SellerCatalog } from '@/features/management/seller-catalog';
 import { StaffManagement } from '@/features/management/staff-management';
 import { PromotionManagement } from '@/features/promotions/promotion-management';
+import { StoreReviews } from '@/features/reviews/store-reviews';
+import { ChatInbox } from '@/features/chat/chat-inbox';
 
 export function ManagerView() {
   const shop = useShop(),
@@ -154,6 +156,8 @@ export function ManagerView() {
             ['slots', 'Khung giờ nhận'],
             ['reports', 'Báo cáo thu tiền'],
             ['promotions', 'Khuyến mãi'],
+            ['reviews', 'Đánh giá'],
+            ['chat', 'Tin nhắn'],
           ].map(([value, label]) => (
             <button
               key={value}
@@ -169,10 +173,14 @@ export function ManagerView() {
         </div>
         <ErrorBox error={!editing ? error : null} />
         {tab === 'catalog' && base && (
-          <SellerCatalog base={base} onProductCreated={inventory.refresh} />
+          <SellerCatalog key={base} base={base} onProductCreated={inventory.refresh} />
         )}
         {tab === 'staff' && base && <StaffManagement base={base} />}
         {tab === 'promotions' && base && <PromotionManagement key={base} base={base} />}
+        {tab === 'reviews' && base && shop.store && (
+          <StoreReviews key={base} storeId={shop.store.id} storeName={shop.store.name} />
+        )}
+        {tab === 'chat' && base && shop.store && <ChatInbox key={base} storeId={shop.store.id} />}
         {tab === 'inventory' && (
           <section className="panel">
             <div className="panel-heading">

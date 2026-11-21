@@ -165,7 +165,7 @@ export class ManagementService {
     return rows(
       this.db.pool,
       `SELECT id,name,slug,owner_store_id FROM categories
-       WHERE owner_store_id IS NULL OR owner_store_id=$1 ORDER BY name,id LIMIT 500`,
+       WHERE owner_store_id IS NULL OR owner_store_id=$1 ORDER BY name,id`,
       [storeId],
     );
   }
@@ -829,7 +829,15 @@ export class ManagementService {
   categories() {
     return rows(
       this.db.pool,
-      'SELECT id,name,slug FROM categories WHERE owner_store_id IS NULL ORDER BY name LIMIT 100',
+      `SELECT c.id,c.name,c.slug FROM categories c
+       WHERE c.owner_store_id IS NULL OR EXISTS (
+         SELECT 1 FROM products p JOIN skus s ON s.product_id=p.id AND s.active
+         JOIN store_skus ss ON ss.sku_id=s.id AND ss.active
+         JOIN inventory_balances b ON b.store_id=ss.store_id AND b.sku_id=s.id
+         JOIN stores st ON st.id=ss.store_id AND st.status='ACTIVE'
+         WHERE p.category_id=c.id
+         AND (ss.expires_on IS NULL OR ss.expires_on >= (statement_timestamp() AT TIME ZONE st.timezone)::date)
+       ) ORDER BY c.name,c.id`,
     );
   }
 }

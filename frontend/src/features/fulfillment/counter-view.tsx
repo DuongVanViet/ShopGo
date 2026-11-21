@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Banknote, CheckCircle2, PackageCheck, ScanLine } from 'lucide-react';
 import { useShop } from '@/store/shop';
@@ -72,7 +73,11 @@ export function CounterView() {
     }
   }
   const remainingAmount = order ? amountRemainingAtCounter(order) : 0;
-  const needsCashCollection = !!order && remainingAmount > 0 && order.paymentStatus !== 'PAID';
+  const needsCashCollection =
+    order?.canCollectCash ??
+    (order?.paymentMethod === 'PAY_AT_PICKUP' &&
+      remainingAmount > 0 &&
+      order.paymentStatus !== 'PAID');
   return (
     <AccessGate roles={['COUNTER']}>
       <div className="container">
@@ -80,6 +85,11 @@ export function CounterView() {
           eyebrow="CLICK & COLLECT · QUẦY NHẬN"
           title="Đúng túi hàng. Đúng người nhận."
           subtitle="Nhập mã khách cung cấp, kiểm tra tiền và xác nhận bàn giao."
+          action={
+            <Link href="/tin-nhan" className="button secondary small">
+              Tin nhắn
+            </Link>
+          }
         />
         <div className="checkout-grid">
           <section className="panel form-stack">
@@ -215,11 +225,13 @@ export function CounterView() {
                       Xác nhận đã thu {money(remainingAmount)}
                     </button>
                   </form>
-                ) : (
+                ) : order.paymentStatus === 'PAID' ? (
                   <div className="info-note">
                     <CheckCircle2 size={17} style={{ display: 'inline', marginRight: 5 }} />
                     Đã ghi nhận đủ tiền cho đơn này.
                   </div>
+                ) : (
+                  <div className="warning-note">Cần kiểm tra giao dịch trước khi bàn giao.</div>
                 )}
                 <button
                   className="button wide"

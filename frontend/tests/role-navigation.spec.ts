@@ -128,7 +128,7 @@ test('anonymous and customer accounts only see customer navigation', async ({ pa
   await expect(page.getByRole('link', { name: /Giỏ hàng/ })).toBeVisible();
 
   await login(page, customer, '/');
-  await expectMainNavigation(page, ['Cửa hàng', 'Đơn của tôi']);
+  await expectMainNavigation(page, ['Cửa hàng', 'Đơn của tôi', 'Tin nhắn']);
   await expect(page.getByRole('link', { name: /Giỏ hàng/ })).toBeVisible();
 });
 

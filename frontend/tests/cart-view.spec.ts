@@ -36,6 +36,7 @@ test('cart uses the catalog product image and keeps the checkout layout responsi
 
     if (path === '/stores' && method === 'GET')
       return fulfill({ items: [store], nextCursor: null });
+    if (path === `/stores/${store.id}` && method === 'GET') return fulfill(store);
     if (path === '/products' && method === 'GET') return fulfill({ items: [], nextCursor: null });
     if (path === '/categories' && method === 'GET') return fulfill([]);
     if (path === `/stores/${store.id}/products` && method === 'GET')
@@ -123,4 +124,21 @@ test('cart uses the catalog product image and keeps the checkout layout responsi
   await alert.getByRole('button', { name: 'Thử lại' }).click();
   await expect(alert).toHaveCount(0);
   await expect(cartImage).toBeVisible();
+  await page.route('**/api/v1/cart?*', (route) =>
+    route.fulfill({
+      json: {
+        data: {
+          id: '75000000-0000-4000-a000-000000000001',
+          storeId: store.id,
+          version: 4,
+          items: [{ ...product, unavailableReason: 'DISCONTINUED' }],
+        },
+      },
+    }),
+  );
+  await page.getByRole('link', { name: 'Mua thêm sản phẩm' }).click();
+  await page.locator('a.cart-button').click();
+  await expect(page.getByText(/Sản phẩm đã ngừng bán/)).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Tiếp tục đặt hàng' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: `Xóa ${product.name}` })).toBeEnabled();
 });

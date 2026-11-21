@@ -14,7 +14,9 @@ export function AdminView() {
     [busy, setBusy] = useState(false),
     [error, setError] = useState<unknown>(null),
     [result, setResult] = useState('');
-  const categories = useResource<Category[]>('/categories');
+  const categories = useResource<Category[]>(
+    shop.user?.isAdmin && shop.store ? `/stores/${shop.store.id}/catalog/categories` : null,
+  );
   async function submit(form: HTMLFormElement) {
     const values = new FormData(form),
       get = (name: string) => String(values.get(name) ?? '');

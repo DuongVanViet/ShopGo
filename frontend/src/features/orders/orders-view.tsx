@@ -30,6 +30,8 @@ import { googleMapsDirectionsUrl, googleMapsPinUrl, hasStoreCoordinates } from '
 import { isCustomerUser } from '@/lib/access';
 import type { Order, OrderStatus, Page } from '@/types';
 import { ProductArt } from '@/components/product-art';
+import { OrderReview } from '@/features/reviews/order-review';
+import { ChatLink } from '@/features/chat/chat-link';
 import { StoreLocationMap } from '@/components/maps/store-location-map';
 import { AccessGate, Badge, Empty, ErrorBox, Loading } from '@/components/ui';
 
@@ -223,6 +225,12 @@ export function OrderDetail({ id }: { id: string }) {
     current.userId === shop.user?.id &&
     ['PARTIALLY_PAID', 'DEPOSIT_PAID', 'PAID'].includes(current.paymentStatus ?? '') &&
     ['CONFIRMED', 'PICKING', 'READY'].includes(current.status);
+  const awaitingDeposit = current?.status === 'PENDING_PAYMENT';
+  const pickupBalance = current
+    ? awaitingDeposit
+      ? current.remainingAmount
+      : (current.amountRemaining ?? current.remainingAmount)
+    : 0;
   const qr = useResource<{ token: string; expiresAt: string }>(
     current?.status === 'READY' && current.userId === shop.user?.id
       ? `/orders/${id}/pickup-token`
@@ -426,24 +434,29 @@ export function OrderDetail({ id }: { id: string }) {
                     <span>Tổng đơn</span>
                     <strong>{money(current.total)}</strong>
                   </div>
-                  {current.paymentPlan === 'DEPOSIT_15' && (
-                    <div className="payment-breakdown compact" aria-label="Chi tiết tiền cọc">
-                      <div>
-                        <span>
-                          {current.paymentStatus === 'PARTIALLY_PAID' ||
-                          current.paymentStatus === 'PAID'
-                            ? 'Đã đặt cọc online'
-                            : 'Cần đặt cọc online'}{' '}
-                          ({current.depositPercent ?? 15}%)
-                        </span>
-                        <strong>{money(current.depositAmount)}</strong>
+                  {current.paymentPlan === 'DEPOSIT_15' &&
+                    !['CANCELLED', 'EXPIRED'].includes(current.status) && (
+                      <div className="payment-breakdown compact" aria-label="Chi tiết tiền cọc">
+                        <div>
+                          <span>
+                            {current.paymentStatus === 'PARTIALLY_PAID' ||
+                            current.paymentStatus === 'PAID'
+                              ? 'Đã đặt cọc online'
+                              : 'Cần đặt cọc online'}{' '}
+                            ({current.depositPercent ?? 15}%)
+                          </span>
+                          <strong>{money(current.depositAmount)}</strong>
+                        </div>
+                        <div>
+                          <span>
+                            {awaitingDeposit
+                              ? 'Trả tại quầy sau khi đặt cọc'
+                              : 'Còn lại trả tại quầy'}
+                          </span>
+                          <strong>{money(pickupBalance)}</strong>
+                        </div>
                       </div>
-                      <div>
-                        <span>Còn lại trả tại quầy</span>
-                        <strong>{money(current.remainingAmount)}</strong>
-                      </div>
-                    </div>
-                  )}
+                    )}
                   {current.paymentPlan === 'FULL_ONLINE' && (
                     <div className="info-note payment-paid-note">
                       <CreditCard size={17} /> Thanh toán toàn bộ online · không thu thêm tại quầy
@@ -500,6 +513,17 @@ export function OrderDetail({ id }: { id: string }) {
                     </form>
                   </details>
                 )}
+                {isCustomerUser(shop.user) &&
+                  current.userId === shop.user?.id &&
+                  ['PENDING_PAYMENT', 'CONFIRMED', 'PICKING', 'READY'].includes(current.status) && (
+                    <section className="panel order-store-contact">
+                      <div>
+                        <h2>Liên lạc về đơn hàng</h2>
+                        <p className="muted">Tin nhắn được xóa khi đơn hàng kết thúc.</p>
+                      </div>
+                      <ChatLink orderId={current.id} />
+                    </section>
+                  )}
                 <details className="panel">
                   <summary className="details-summary">Cần hỗ trợ về đơn hàng</summary>
                   <form
@@ -586,8 +610,8 @@ export function OrderDetail({ id }: { id: string }) {
                       <span>
                         Đơn sẽ được chuẩn bị tại{' '}
                         <strong>{current.store?.name ?? 'cửa hàng đã chọn'}</strong>.
-                        {current.paymentPlan === 'DEPOSIT_15' && (current.remainingAmount ?? 0) > 0
-                          ? ` Số tiền còn lại ${money(current.remainingAmount ?? 0)} thanh toán khi nhận.`
+                        {current.paymentPlan === 'DEPOSIT_15' && (pickupBalance ?? 0) > 0
+                          ? ` Số tiền còn lại ${money(pickupBalance)} thanh toán khi nhận.`
                           : ' Bạn không cần thanh toán thêm tại quầy.'}
                       </span>
                     </div>
@@ -781,13 +805,18 @@ export function OrderDetail({ id }: { id: string }) {
                   </section>
                 )}
                 {current.status === 'COMPLETED' && (
-                  <section className="panel qr-panel success-panel">
-                    <CheckCircle2 size={42} />
-                    <h2 style={{ fontSize: 22 }}>Hẹn gặp bạn lần tới.</h2>
-                    <Link className="button wide" href="/" style={{ marginTop: 20 }}>
-                      Tiếp tục mua sắm
-                    </Link>
-                  </section>
+                  <>
+                    {isCustomerUser(shop.user) && current.userId === shop.user?.id && (
+                      <OrderReview key={current.id} orderId={current.id} />
+                    )}
+                    <section className="panel qr-panel success-panel">
+                      <CheckCircle2 size={42} />
+                      <h2 style={{ fontSize: 22 }}>Hẹn gặp bạn lần tới.</h2>
+                      <Link className="button wide" href="/" style={{ marginTop: 20 }}>
+                        Tiếp tục mua sắm
+                      </Link>
+                    </section>
+                  </>
                 )}
               </aside>
             </div>

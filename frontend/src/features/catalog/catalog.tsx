@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowDown,
@@ -37,7 +37,8 @@ import { Empty, ErrorBox, Loading, Modal } from '@/components/ui';
 import { StorePicker, StorePickerDialog } from '@/components/store-picker';
 import { FavoriteToggle } from '@/features/favorites/favorite-toggle';
 import { favoriteKey, useFavorites } from '@/features/favorites/use-favorites';
-import { StoreOffers } from '@/features/promotions/voucher-picker';
+import { StoreOffers } from './store-offers';
+import { StoreReviews } from '@/features/reviews/store-reviews';
 import { ProductPrice } from '@/components/product-price';
 
 type SearchScope = 'auto' | 'all' | 'store';
@@ -324,7 +325,10 @@ export function Catalog() {
       </section>
 
       {activeSearchScope === 'store' && shop.store && (
-        <StoreOffers key={shop.store.id} storeId={shop.store.id} />
+        <Fragment key={shop.store.id}>
+          <StoreReviews storeId={shop.store.id} storeName={shop.store.name} />
+          <StoreOffers storeId={shop.store.id} onSelect={setSelected} />
+        </Fragment>
       )}
       <section className="shopgo-retail-category-strip" aria-label="Danh mục nổi bật">
         <button
@@ -361,7 +365,7 @@ export function Catalog() {
           <div>
             <small>KHUYẾN MÃI SHOPGO</small>
             <h2 id="store-offers-card-title">Ưu đãi từ cửa hàng</h2>
-            <p>Chọn cửa hàng và xem các mã giảm giá dành cho giỏ hàng của bạn.</p>
+            <p>Chọn cửa hàng để xem các sản phẩm đang giảm giá.</p>
           </div>
           <Percent size={68} aria-hidden="true" />
           <button

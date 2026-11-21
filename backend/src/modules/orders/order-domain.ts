@@ -94,34 +94,41 @@ export async function releaseOrder(
   await refundPaid(tx, order.id, reason);
   return transition(tx, order, status, actor, requestId, reason);
 }
-async function paymentDetails(tx: Pick<Tx, 'query'>, order: any) {
+export async function paymentDetails(tx: Pick<Tx, 'query'>, order: any) {
   const totals = must(
     await one(
       tx,
       `SELECT
-    (SELECT COALESCE(sum(amount),0) FROM payment_attempts WHERE order_id=$1 AND status='PAID')::bigint+
-    (SELECT COALESCE(sum(amount),0) FROM counter_collections WHERE order_id=$1)::bigint AS paid,
+    (SELECT COALESCE(sum(amount),0) FROM payment_attempts WHERE order_id=$1 AND status='PAID')::bigint AS online_paid,
+    (SELECT COALESCE(sum(amount),0) FROM counter_collections WHERE order_id=$1)::bigint AS cash_paid,
     (SELECT COALESCE(sum(r.amount),0) FROM refunds r JOIN payment_attempts p ON p.id=r.payment_attempt_id WHERE p.order_id=$1 AND r.status='SUCCEEDED')::bigint AS refunded,
-    (SELECT count(*) FROM refunds r JOIN payment_attempts p ON p.id=r.payment_attempt_id WHERE p.order_id=$1 AND r.status IN ('REQUESTED','PROCESSING'))::int AS pending`,
+    (SELECT COALESCE(sum(r.amount),0) FROM refunds r JOIN payment_attempts p ON p.id=r.payment_attempt_id WHERE p.order_id=$1 AND r.status IN ('REQUESTED','PROCESSING'))::bigint AS pending`,
       [order.id],
     ),
   );
+  const paid = totals.online_paid + totals.cash_paid;
+  const onlineRetained = totals.online_paid - totals.refunded - totals.pending;
+  const retained = onlineRetained + totals.cash_paid;
+  const cancelled = order.status === 'CANCELLED' || order.status === 'EXPIRED';
+  const closed = cancelled || order.status === 'COMPLETED';
   let status: string;
-  if (totals.pending > 0) status = 'REFUND_PENDING';
+  if (!cancelled && retained >= order.total) status = 'PAID';
+  else if (!closed && order.deposit_amount > 0 && retained >= order.deposit_amount)
+    status = 'PARTIALLY_PAID';
+  else if (totals.pending > 0) status = 'REFUND_PENDING';
   else if (totals.refunded > 0)
-    status = totals.refunded >= totals.paid ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
-  else if (totals.paid >= order.total && (totals.paid > 0 || order.total === 0)) status = 'PAID';
-  else if (totals.paid > 0) status = 'PARTIALLY_PAID';
+    status = totals.refunded >= paid ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
+  else if (paid >= order.total) status = 'PAID';
+  else if (paid > 0) status = 'PARTIALLY_PAID';
   else status = order.status === 'PENDING_PAYMENT' ? 'PENDING' : 'UNPAID';
   return {
     status,
-    amountPaid: totals.paid,
+    onlineRetained,
+    cashPaid: totals.cash_paid,
+    amountPaid: paid,
     amountRefunded: totals.refunded,
-    amountRemaining: Math.max(order.total - totals.paid, 0),
+    amountRemaining: closed ? 0 : Math.max(order.total - retained, 0),
   };
-}
-export async function paymentSummary(tx: Pick<Tx, 'query'>, order: any): Promise<string> {
-  return (await paymentDetails(tx, order)).status;
 }
 export async function orderView(tx: Pick<Tx, 'query'>, order: any) {
   const payment = await paymentDetails(tx, order);
@@ -131,6 +138,12 @@ export async function orderView(tx: Pick<Tx, 'query'>, order: any) {
     amountPaid: payment.amountPaid,
     amountRefunded: payment.amountRefunded,
     amountRemaining: payment.amountRemaining,
+    canCollectCash:
+      order.status === 'READY' &&
+      order.payment_method === 'PAY_AT_PICKUP' &&
+      payment.amountRemaining > 0 &&
+      payment.cashPaid === 0 &&
+      payment.onlineRetained >= order.deposit_amount,
     items: await rows(
       tx,
       'SELECT i.*,s.barcode FROM order_items i JOIN skus s ON s.id=i.sku_id WHERE i.order_id=$1 ORDER BY i.id',
@@ -139,7 +152,9 @@ export async function orderView(tx: Pick<Tx, 'query'>, order: any) {
     slot: await one(tx, 'SELECT id,starts_at,ends_at FROM fulfillment_slots WHERE id=$1', [
       order.slot_id,
     ]),
-    store: await one(tx, 'SELECT id,name,address FROM stores WHERE id=$1', [order.store_id]),
+    store: await one(tx, 'SELECT id,code,name,address,latitude,longitude FROM stores WHERE id=$1', [
+      order.store_id,
+    ]),
     timeline: await rows(
       tx,
       'SELECT from_status,to_status,reason,created_at FROM order_events WHERE order_id=$1 ORDER BY created_at,id',

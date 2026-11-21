@@ -112,23 +112,7 @@ export class PromotionsService {
       });
     });
   }
-  async offers(storeId: string, page: Paging) {
-    must(
-      await one(this.db.pool, "SELECT id FROM stores WHERE id=$1 AND status='ACTIVE'", [storeId]),
-    );
-    return paginate(
-      await rows(
-        this.db.pool,
-        `SELECT id,code,discount_type,value,min_total,max_discount,valid_until FROM vouchers
-       WHERE (store_id=$1 OR store_id IS NULL) AND active AND allocated_count<quota
-       AND valid_from<=clock_timestamp() AND valid_until>clock_timestamp()
-       AND ($2::uuid IS NULL OR id>$2) ORDER BY id LIMIT $3`,
-        [storeId, page.cursor ?? null, page.limit + 1],
-      ),
-      page.limit,
-    );
-  }
-  preview(actor: Actor, input: Paging & { storeId: string; code?: string; cartVersion?: number }) {
+  preview(actor: Actor, input: { storeId: string; code: string; cartVersion?: number }) {
     return this.db.tx(async (tx) => {
       must(await one(tx, "SELECT id FROM stores WHERE id=$1 AND status='ACTIVE'", [input.storeId]));
       const cart = await one(
@@ -146,34 +130,33 @@ export class PromotionsService {
       const subtotal = Number(sum!.subtotal);
       if (!Number.isSafeInteger(subtotal) || subtotal > 1_000_000_000_000)
         fail('CART_LIMIT', 'Giỏ hàng vượt hạn mức.', 422);
-      const evaluate = (voucher: any) => ({
-        ...voucher,
-        eligible: !voucherReason(voucher, input.storeId, subtotal),
-        reason: voucherReason(voucher, input.storeId, subtotal),
-        missingAmount: Math.max(0, voucher.min_total - subtotal),
-        discountAmount: voucherDiscount(voucher, subtotal),
-      });
-      const found = await rows(
+      const voucher = await one(
         tx,
-        `SELECT *, ${voucherWindow} FROM vouchers WHERE (store_id=$1 OR store_id IS NULL) AND
-         (($2::text IS NOT NULL AND code=$2) OR ($2::text IS NULL AND active AND allocated_count<quota
-          AND valid_from<=clock_timestamp() AND valid_until>clock_timestamp()))
-         AND ($3::uuid IS NULL OR id>$3) ORDER BY id LIMIT $4`,
-        [input.storeId, input.code?.toUpperCase() ?? null, input.cursor ?? null, input.limit + 1],
+        `SELECT *, ${voucherWindow} FROM vouchers WHERE (store_id=$1 OR store_id IS NULL) AND code=$2`,
+        [input.storeId, input.code.toUpperCase()],
       );
-      const best = await one(
-        tx,
-        `SELECT *, ${voucherWindow} FROM vouchers WHERE (store_id=$1 OR store_id IS NULL)
-         AND active AND allocated_count<quota AND min_total<=$2 AND valid_from<=clock_timestamp() AND valid_until>clock_timestamp()
-         ORDER BY LEAST($2::bigint,COALESCE(max_discount,$2::bigint),CASE WHEN discount_type='FIXED' THEN value
-           ELSE floor($2::numeric*value/100)::bigint END) DESC,id LIMIT 1`,
-        [input.storeId, subtotal],
-      );
+      const reason = voucher && voucherReason(voucher, input.storeId, subtotal);
       return {
-        ...paginate(found.map(evaluate), input.limit),
+        items: voucher
+          ? [
+              {
+                id: voucher.id,
+                code: voucher.code,
+                discountType: voucher.discount_type,
+                value: voucher.value,
+                minTotal: voucher.min_total,
+                maxDiscount: voucher.max_discount,
+                validUntil: voucher.valid_until,
+                eligible: !reason,
+                reason,
+                missingAmount: Math.max(0, voucher.min_total - subtotal),
+                discountAmount: voucherDiscount(voucher, subtotal),
+              },
+            ]
+          : [],
+        nextCursor: null,
         subtotal,
         cartVersion: cart?.version ?? null,
-        recommended: best && !voucherReason(best, input.storeId, subtotal) ? evaluate(best) : null,
       };
     });
   }

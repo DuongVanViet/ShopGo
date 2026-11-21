@@ -16,19 +16,21 @@ Tất cả đường dẫn dưới đây theo prefix `/api/v1`. Public chỉ đ�
 | POST /auth/logout | Có phiên | Session | Thu hồi refresh session, xóa cookie |
 | GET /me | Có phiên | — | Hồ sơ và membership được phép |
 | GET /stores | Public | query, lat/lng tùy chọn, cursor | Cửa hàng hoạt động và giờ mở |
+| GET /categories | Public | — | Danh mục chung và danh mục riêng có sản phẩm đang trưng bày trên toàn ShopGo |
 | GET /products | Public | q, categoryId, inStock, cursor | Tìm offer từ mọi cửa hàng; trả kèm store, giá và tồn riêng của từng nơi; `q` tìm theo tên, SKU, barcode, mô tả, danh mục và tên cửa hàng |
-| GET /stores/{storeId}/products | Public | q, categoryId, inStock, cursor | Tìm trong một cửa hàng theo tên, SKU, barcode, mô tả hoặc danh mục; trả giá/tồn tại store và thời điểm cập nhật |
+| GET /stores/{storeId}/products | Public | q, categoryId, inStock, discountedOnly, cursor | Tìm sản phẩm theo cửa hàng. Với `discountedOnly=true`, chỉ trả sản phẩm đang giảm giá, kèm `originalPrice` và `price` |
 | GET /stores/{storeId}/categories | Public | — | Chỉ danh mục có SKU active tại store |
 | GET /stores/{storeId}/products/{skuId} | Public | — | Chi tiết SKU và available |
 | GET /stores/{storeId}/slots | Public | date, method=PICKUP | Slot còn nhận đơn, sức chứa khả dụng |
-| GET /cart | Khách | storeId | Giỏ và version; mỗi dòng trả `unit` và `imageUrl` ảnh chính giống catalog để frontend hiển thị nhất quán |
+| GET /cart | Khách | storeId | Giỏ và version. Mỗi dòng trả `unit`, `imageUrl`, số lượng khả dụng và `unavailableReason` (`DISCONTINUED`, `EXPIRED` hoặc `null`) |
 | PUT /cart/items/{skuId} | Khách | storeId, quantity, expectedVersion | Upsert số lượng; không giữ tồn |
+| GET /cart/vouchers | Có phiên | storeId, code bắt buộc, cartVersion tùy chọn | Kiểm tra đúng mã đã nhập với giỏ của khách. Trả điều kiện và số tiền giảm của mã khớp |
 | DELETE /cart/items/{skuId} | Khách | storeId, expectedVersion | Xóa dòng và tăng version |
 | POST /cart/switch-store | Khách | targetStoreId, expectedVersion, confirm | Preview chênh lệch khi confirm=false; chỉ đổi khi xác nhận |
-| POST /checkout/quotes | Khách | cartId, cartVersion, slotId, voucherCode? | Quote, breakdown, expiresAt; không reserve |
-| POST /orders | Khách | quoteId, paymentMethod, expectedCartVersion | 201; nguyên tử tồn/slot/voucher/đơn, idempotent |
+| POST /checkout/quotes | Khách | cartId, cartVersion, slotId, voucherCode? | Báo giá kiểm tra hạn sử dụng cho toàn bộ khung nhận theo múi giờ cửa hàng |
+| POST /orders | Khách | quoteId, paymentMethod, expectedCartVersion, expectedStoreId? | Tạo đơn idempotent và giữ tồn, suất nhận, voucher trong một giao dịch. Nếu gửi `expectedStoreId`, báo giá khác cửa hàng trả về 409 |
 | GET /orders | Khách | cursor, status? | Chỉ đơn của mình |
-| GET /orders/{id} | Chủ đơn hoặc nhân sự có scope | — | Trạng thái, timeline và dữ liệu theo quyền |
+| GET /orders/{id} | Chủ đơn hoặc nhân sự có scope | — | Trạng thái, timeline, tọa độ cửa hàng nếu có và số dư thực tế `amountRemaining`. Số này tính sau các khoản đã hoàn hoặc đang chờ hoàn. `remainingAmount` là số dự kiến trong phương án thanh toán ban đầu |
 | POST /orders/{id}/cancel | Chủ đơn/manager có quyền | reason, expectedVersion | Hủy hợp lệ, giải phóng giữ chỗ, tạo yêu cầu hoàn nếu cần |
 | POST /orders/{id}/payment-attempts | Chủ đơn | expectedVersion | Payment session cho đơn chưa trả còn hạn; có idempotency |
 | GET /orders/{id}/pickup-token | Chủ đơn | — | QR hiện hành nếu READY; Cache-Control no-store |

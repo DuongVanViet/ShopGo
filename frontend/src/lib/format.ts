@@ -11,6 +11,13 @@ export const time = (date: string) =>
     minute: '2-digit',
     timeZone: 'Asia/Ho_Chi_Minh',
   }).format(new Date(date));
+export const calendarDate = (date: string) =>
+  new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'Asia/Ho_Chi_Minh',
+  }).format(new Date(date));
 export const dateTime = (date: string) =>
   new Intl.DateTimeFormat('vi-VN', {
     day: '2-digit',

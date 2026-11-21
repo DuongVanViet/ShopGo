@@ -59,6 +59,10 @@ export class CatalogController {
         .extend({
           q: z.string().max(100).optional(),
           categoryId: uuid.optional(),
+          discountedOnly: z
+            .enum(['true', 'false'])
+            .transform((v) => v === 'true')
+            .optional(),
           inStock: z
             .enum(['true', 'false'])
             .transform((v) => v === 'true')

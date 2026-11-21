@@ -24,32 +24,39 @@ export function useResource<T>(path: string | null, pollMs = 0) {
   useEffect(() => {
     if (!path) return;
     const controller = new AbortController();
-    setState((old) => ({
-      key: identity,
-      data: old.key === identity ? old.data : null,
-      error: null,
-      loading: true,
-    }));
-    api<T>(path, { token, signal: controller.signal })
-      .then((data) => setState({ key: identity, data, error: null, loading: false }))
-      .catch((error) => {
+    let inFlight = false;
+    async function load() {
+      if (!path || inFlight || controller.signal.aborted) return;
+      inFlight = true;
+      setState((old) => ({
+        key: identity,
+        data: old.key === identity ? old.data : null,
+        error: null,
+        loading: true,
+      }));
+      try {
+        const data = await api<T>(path, { token, signal: controller.signal });
+        if (!controller.signal.aborted)
+          setState({ key: identity, data, error: null, loading: false });
+      } catch (error) {
         if (!controller.signal.aborted)
           setState((old) => ({ ...old, key: identity, error, loading: false }));
-      });
-    return () => controller.abort();
-  }, [path, token, identity, revision]);
-  useEffect(() => {
-    if (!pollMs || !path) return;
+      } finally {
+        inFlight = false;
+      }
+    }
+    void load();
     const visibleRefresh = () => {
-      if (document.visibilityState === 'visible') refresh();
+      if (document.visibilityState === 'visible') void load();
     };
-    const timer = setInterval(visibleRefresh, pollMs);
-    document.addEventListener('visibilitychange', visibleRefresh);
+    const timer = pollMs ? setInterval(visibleRefresh, pollMs) : undefined;
+    if (pollMs) document.addEventListener('visibilitychange', visibleRefresh);
     return () => {
       clearInterval(timer);
+      controller.abort();
       document.removeEventListener('visibilitychange', visibleRefresh);
     };
-  }, [path, pollMs, refresh]);
+  }, [path, token, identity, revision, pollMs]);
   const current = state.key === identity && !!path;
   return {
     data: current ? state.data : null,

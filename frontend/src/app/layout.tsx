@@ -8,6 +8,8 @@ import '@/styles/retail-catalog.css';
 import '@/styles/retail-checkout.css';
 import '@/styles/retail-orders.css';
 import '@/styles/promotions.css';
+import '@/styles/reviews.css';
+import '@/styles/chat.css';
 import 'leaflet/dist/leaflet.css';
 export const metadata: Metadata = {
   title: { default: 'ShopGo — Mua tươi ngon, nhận thảnh thơi', template: '%s | ShopGo' },

@@ -64,8 +64,16 @@ test('seller creates a category and a detailed product without an admin account'
       categories.push(category);
       return fulfill(category, 201);
     }
-    if (path === `/stores/${store.id}/catalog/products` && method === 'GET')
-      return fulfill({ items: products, nextCursor: null });
+    if (path === `/stores/${store.id}/catalog/products` && method === 'GET') {
+      const cursor = url.searchParams.get('cursor');
+      const start = cursor ? products.findIndex((p) => p.id === cursor) + 1 : 0;
+      const limit = Number(url.searchParams.get('limit'));
+      const items = products.slice(start, start + limit);
+      return fulfill({
+        items,
+        nextCursor: start + limit < products.length ? items.at(-1)?.id : null,
+      });
+    }
     if (path === `/stores/${store.id}/catalog/products` && method === 'POST') {
       const body = request.postDataJSON();
       productRequest = {
@@ -354,4 +362,15 @@ test('seller creates a category and a detailed product without an admin account'
     mobileLayout.documentWidth,
     `Elements overflowing mobile viewport: ${JSON.stringify(mobileLayout.overflowing)}`,
   ).toBeLessThanOrEqual(mobileLayout.viewportWidth + 1);
+  for (let index = 2; index <= 101; index++) {
+    const id = crypto.randomUUID();
+    products.push({ ...products[0], id, skuId: id, productId: id, name: `Mặt hàng số ${index}` });
+  }
+  await page.getByRole('button', { name: 'Tồn kho', exact: true }).click();
+  await page.getByRole('button', { name: 'Danh mục & sản phẩm', exact: true }).click();
+  await expect(page.locator('.seller-product-card')).toHaveCount(100);
+  await page.getByRole('button', { name: 'Trang sau', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Mặt hàng số 101' })).toBeVisible();
+  await page.getByRole('button', { name: 'Trang trước', exact: true }).click();
+  await expect(page.locator('.seller-product-card')).toHaveCount(100);
 });

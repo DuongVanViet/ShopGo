@@ -7,7 +7,7 @@ import { constantEqual, hash, hmac, randomToken } from '../../common/crypto';
 import { fail, must } from '../../common/errors';
 import { audit } from '../../common/events';
 import { idempotent } from '../../common/idempotency';
-import { orderView, paymentSummary, releaseOrder, state, transition } from '../orders/order-domain';
+import { orderView, paymentDetails, releaseOrder, state, transition } from '../orders/order-domain';
 import { paginate } from '../catalog/catalog.service';
 
 @Injectable()
@@ -201,25 +201,12 @@ export class FulfillmentService {
           }
         } else if (action === 'collection') {
           state(order, ['READY']);
-          const settlement = must(
-            await one(
-              tx,
-              `SELECT
-                ((SELECT COALESCE(sum(amount),0) FROM payment_attempts
-                  WHERE order_id=$1 AND status='PAID')-
-                 (SELECT COALESCE(sum(r.amount),0) FROM refunds r
-                  JOIN payment_attempts p ON p.id=r.payment_attempt_id
-                  WHERE p.order_id=$1 AND r.status='SUCCEEDED'))::bigint AS online_paid,
-                (SELECT COALESCE(sum(amount),0) FROM counter_collections
-                  WHERE order_id=$1)::bigint AS cash_paid`,
-              [orderId],
-            ),
-          );
-          if (settlement.cash_paid > 0)
+          const settlement = await paymentDetails(tx, order);
+          if (settlement.cashPaid > 0)
             fail('CASH_ALREADY_COLLECTED', 'Đơn đã được ghi nhận tiền mặt.', 409);
-          if (settlement.online_paid < order.deposit_amount)
+          if (settlement.onlineRetained < order.deposit_amount)
             fail('DEPOSIT_REQUIRED', 'Đơn chưa thanh toán đủ tiền đặt cọc.', 422);
-          const outstanding = Math.max(order.total - settlement.online_paid, 0);
+          const outstanding = settlement.amountRemaining;
           if (
             order.payment_method !== 'PAY_AT_PICKUP' ||
             outstanding <= 0 ||
@@ -256,7 +243,7 @@ export class FulfillmentService {
             !constantEqual(token.token_hash, hash(input.token))
           )
             fail('QR_EXPIRED', 'Mã nhận hàng không còn hiệu lực.', 410);
-          if ((await paymentSummary(tx, order)) !== 'PAID')
+          if ((await paymentDetails(tx, order)).status !== 'PAID')
             fail('PAYMENT_REQUIRED', 'Phải ghi nhận đủ tiền trước khi bàn giao.', 422);
           const reservations = await rows(
             tx,

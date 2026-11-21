@@ -142,7 +142,7 @@ html[data-theme='dark'] .product-prices strong {
   margin-bottom: 16px;
 }
 .promotion-management h2,
-.store-vouchers h2 {
+.store-offers h2 {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -158,24 +158,63 @@ html[data-theme='dark'] .product-prices strong {
   font-size: 16px;
   min-height: 44px;
 }
-.store-vouchers {
+.store-offers {
   margin: 24px 0;
 }
-.store-vouchers h2 {
+.store-offers h2 {
   font-size: 18px;
   margin-bottom: 12px;
 }
-.store-vouchers > p {
+.store-offers > p {
   font-size: 13px;
   margin-top: 10px;
 }
-.store-voucher-list {
+.store-offer-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
+.store-offer {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--white);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  text-align: left;
+}
+.store-offer:hover,
+.store-offer:focus-visible {
+  border-color: var(--green);
+}
+.store-offer-photo {
+  display: grid;
+  place-items: center;
+  height: 72px;
+}
+.store-offer-photo > * {
+  width: 100%;
+  height: 100%;
+  max-height: 72px;
+  object-fit: contain;
+}
+.store-offer-copy {
+  display: grid;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+.store-offer-copy small {
+  color: var(--muted);
+}
+.store-offers > .row {
+  margin-top: 8px;
+}
 @media (max-width: 760px) {
-  .store-voucher-list {
+  .store-offer-list {
     grid-template-columns: 1fr;
   }
   .voucher-ticket {
